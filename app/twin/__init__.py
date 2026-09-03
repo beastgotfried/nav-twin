@@ -16,6 +16,7 @@ if _SIM not in sys.path:
 from .residual import ResidualEngine
 from .anomaly import AnomalyMonitor
 from .diagnose import Diagnoser
+from .ml_bridge import MLLayer
 
 # The first seconds of a mission are assumed healthy and used to fit the
 # frozen baseline delta (Handbook 6.6). ASSUMPTION, documented: a real
@@ -26,16 +27,23 @@ DEFAULT_CALIBRATE_S = 30.0
 
 
 class Twin:
-    def __init__(self, calibrate_s: float = DEFAULT_CALIBRATE_S):
+    def __init__(self, calibrate_s: float = DEFAULT_CALIBRATE_S,
+                 ml: bool = True):
         self.calibrate_s = calibrate_s
         self.residual = ResidualEngine()
         self.anomaly = AnomalyMonitor()
         self.diagnoser = Diagnoser()
+        # The learned layer (roadmap W6). ml=False forces rules-only, which
+        # is also what happens automatically on a checkout without model
+        # artifacts, so verify_twin.py passes in both configurations.
+        self.ml = MLLayer() if ml else None
 
     def reset(self):
         self.residual.reset()
         self.anomaly.reset()
         self.diagnoser.reset()
+        if self.ml is not None:
+            self.ml.reset()
 
     def step(self, frame: dict) -> dict:
         state = self.residual.step(frame)
@@ -52,6 +60,10 @@ class Twin:
                 "evidence": ["outside the computed band on "
                              + (state["alarm"]["channel"] or "?"),
                              "no known fault signature matches"]}]
+        if self.ml is not None:
+            # The learned view. Never replaces the rule-based diagnosis;
+            # adds state["ml"] with forest score, model diagnosis and RUL.
+            state["ml"] = self.ml.step(state)
         return state
 
 

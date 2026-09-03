@@ -143,7 +143,7 @@ class Diagnoser:
         alts = np.array([w[0] for w in self._map_window])
         defs = np.array([w[1] for w in self._map_window])
         grows = (np.corrcoef(alts, defs)[0, 1] > 0.5
-                 if alts.ptp() > 500 else False)
+                 if np.ptp(alts) > 500 else False)
         score = deficit / TURBO_MIN_DEFICIT_PA + (0.5 if grows else 0.0)
         ev = [f"achieved MAP {deficit/1000:.1f} kPa below commanded at "
               f"{alt:,.0f} m".replace(",", " ")]

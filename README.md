@@ -46,6 +46,36 @@ npm run build             # output lands in dist/, which server.py serves
 npm run dev               # or a Vite dev server with hot reload
 ```
 
+## The ML layer
+
+The twin ships a rule-based pipeline (band + sign-pattern diagnosis) and a
+learned layer beside it. The learned layer trains on a simulator corpus and
+deploys only if it passes its gates:
+
+```bash
+cd simulator
+python ml_corpus.py --healthy 600 --fault 320 --workers 8   # ~2 h on 8 cores
+python verify_corpus.py          # coverage, determinism, class separation
+
+cd ../app
+python ml_anomaly.py             # isolation forest on healthy features
+python verify_anomaly.py         # gate: FPR calibration, latency, coverage
+python ml_classify.py            # gradient boosting + attribution
+python verify_classify.py        # gate: accuracy, per-class recall, SHAP
+                                 # signature consistency
+python ml_rul.py                 # observation model for the particle filter
+python verify_rul.py             # gate: tracking, no false degradation,
+                                 # bounded framing
+python verify_ml.py              # integration gate, models present
+python verify_twin.py            # must pass with AND without models
+```
+
+Artifacts land in `app/models/`. When present, `Twin.step` adds an `ml`
+block (forest score, model diagnosis, bounded RUL) alongside the unchanged
+rule-based diagnosis. When absent, the twin is rules-only and everything
+still passes. RUL output is a bounded relative degradation index, never a
+certified time-to-failure.
+
 ## Rules of the house
 
 - Every number the system shows comes from the model or a verify script.

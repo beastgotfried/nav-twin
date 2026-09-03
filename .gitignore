@@ -8,3 +8,6 @@ node_modules/
 app/dashboard/dist/
 app/dashboard/.vercel/
 *.tsbuildinfo
+
+# trained model artifacts (added deliberately per release)
+app/models/
