@@ -108,7 +108,7 @@ def main():
 
     pipe = Pipeline([("scaler", StandardScaler()),
                      ("iforest", IsolationForest(
-                         n_estimators=200, max_samples=0.25,
+                         n_estimators=150, max_samples=10_000,
                          random_state=0, n_jobs=-1))])
     t0 = time.time()
     pipe.fit(Xtr)

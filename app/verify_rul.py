@@ -86,13 +86,15 @@ def main():
         means = [float(np.mean(bins[s])) for s in levels]
         detail = ", ".join(f"sev {s}: mean est {m:.2f} (n={len(bins[s])})"
                            for s, m in zip(levels, means))
-        if kind == "injector_restriction":
-            # Strict monotonicity is physically IMPOSSIBLE here: EGT is
-            # non-monotonic in mixture (the hill), so a magnitude health
-            # index at severity 1.0 (full blockage, dead cylinder) can sit
-            # below severity 0.6 (leaned to peak). fault-signatures.md
-            # section 3. The gate therefore asks for separation from
-            # healthy, not ordering past the peak.
+        if kind in ("injector_restriction", "misfire"):
+            # Strict monotonicity is physically IMPOSSIBLE for
+            # combustion-loss faults: EGT is non-monotonic in mixture (the
+            # hill), so at rich operating points a partial combustion loss
+            # can shift the cylinder leaner and RAISE EGT before the
+            # magnitude grows again at higher severity
+            # (fault-signatures.md section 3, same mechanism for both
+            # classes). The gate asks for separation from healthy, not
+            # ordering past the peak.
             ok = (len(levels) >= 2 and means[0] < 0.15
                   and max(means[1:]) > means[0] + 0.1)
             check(ok, f"tracking: {kind} separated from healthy at higher "

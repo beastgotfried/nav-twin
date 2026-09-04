@@ -11,3 +11,6 @@ app/dashboard/.vercel/
 
 # trained model artifacts (added deliberately per release)
 app/models/
+
+# generated training corpus (regenerable, not committed)
+corpus/
