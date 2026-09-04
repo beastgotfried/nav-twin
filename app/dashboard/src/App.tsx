@@ -13,6 +13,7 @@ import { FaultAlert } from "./components/FaultAlert";
 import { MaintenanceAdvisory } from "./components/MaintenanceAdvisory";
 import { HealthTrend, type TrendChannel } from "./components/HealthTrend";
 import { MissionReport } from "./components/MissionReport";
+import { IntegrationCard } from "./components/IntegrationCard";
 import { DemoBar } from "./components/DemoBar";
 import { WelcomeOverlay } from "./components/WelcomeOverlay";
 
@@ -184,6 +185,7 @@ export default function App() {
           <FaultAlert twin={twin} />
           <MaintenanceAdvisory twin={twin} />
           <EngineHealth twin={twin} selected={channel} onSelect={setChannel} />
+          <IntegrationCard />
         </div>
         <EngineHero twin={twin} />
         <div className="col-stack">

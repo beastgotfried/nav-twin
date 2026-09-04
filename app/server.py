@@ -45,6 +45,9 @@ for _p in (str(_SIM_DIR), str(_TWIN_DIR)):
 import mission  # noqa: E402
 from physics import faults  # noqa: E402
 from physics.engine_params import DEFAULT_GEOMETRY  # noqa: E402
+from bridge import normalize, FrameError  # noqa: E402
+from bridge.mavlink import from_mavlink  # noqa: E402
+from bridge import mqtt as bridge_mqtt  # noqa: E402
 
 try:
     from twin import Twin  # noqa: E402
@@ -148,6 +151,36 @@ _CLIENTS: set = set()
 _SESSION = None       # active _Session or None
 _RUNNER = None        # asyncio.Task running _mission_loop, or None
 _HISTORY = {"t_s": [], "cylinders": {}}
+
+# External telemetry ingest (bridge/). One queue feeds the external
+# session's generator; counters back GET /api/bridge/status.
+import queue as _queue  # noqa: E402
+_INGEST_Q = _queue.Queue()
+_INGEST_STATS = {"frames": 0, "rejected": 0, "sources": {},
+                 "last_frame_monotonic": None}
+_EXTERNAL_STALL_S = 30.0   # no frames for this long -> the external session ends
+
+
+def _external_gen(q):
+    """Frame generator fed by the ingest queue. Runs inside the mission
+    loop's executor thread, so a blocking get with a stall timeout is
+    correct here. None on stall ends the session, same as a mission CSV
+    running out."""
+    while True:
+        try:
+            yield q.get(timeout=_EXTERNAL_STALL_S)
+        except _queue.Empty:
+            return
+
+
+def _push_ingest_frame(frame, source):
+    """One validated frame into the ingest queue, with counters."""
+    import time
+    _INGEST_Q.put(frame)
+    _INGEST_STATS["frames"] += 1
+    _INGEST_STATS["sources"][source] = \
+        _INGEST_STATS["sources"].get(source, 0) + 1
+    _INGEST_STATS["last_frame_monotonic"] = time.monotonic()
 
 
 @dataclass
@@ -437,7 +470,69 @@ async def api_control(body: dict = Body(...)):
 
     raise HTTPException(
         400, f"unknown action {action!r}; valid actions: start, pause, "
-             "resume, reset, inject, clear_faults, replay")
+             "resume, reset, inject, clear_faults, replay, speed")
+
+
+@app.post("/api/ingest")
+async def api_ingest(body: dict = Body(...)):
+    """External telemetry in. Accepts one frame or a batch, in our native
+    schema or a MAVLink/EFI-style envelope (bridge/). The first frame of a
+    stream starts an external session; frames then flow through the twin
+    and out the websocket exactly like a simulated mission."""
+    global _SESSION
+    fmt = body.get("format", "native")
+    if fmt not in ("native", "mavlink"):
+        raise HTTPException(400, "'format' must be 'native' or 'mavlink'")
+    raw = body.get("frames", body.get("frame"))
+    if raw is None:
+        raise HTTPException(400, "body must include 'frame' or 'frames'")
+    items = raw if isinstance(raw, list) else [raw]
+
+    frames = []
+    try:
+        for item in items:
+            frames.append(from_mavlink(item) if fmt == "mavlink"
+                          else normalize(item))
+    except FrameError as e:
+        _INGEST_STATS["rejected"] += 1
+        raise HTTPException(422, f"frame rejected: {e}")
+
+    if _SESSION is not None and not _SESSION.ended \
+            and _SESSION.kind != "external":
+        raise HTTPException(409, "a mission is running; reset before "
+                                 "ingesting external telemetry")
+    if _SESSION is None or _SESSION.ended:
+        await _begin_session("external", _external_gen(_INGEST_Q), [], 1.0)
+
+    for f in frames:
+        _push_ingest_frame(f, fmt)
+    return {"ok": True, "queued": len(frames),
+            "frames_total": _INGEST_STATS["frames"]}
+
+
+@app.get("/api/bridge/status")
+async def api_bridge_status():
+    """What the integration layer is doing right now, for the dashboard's
+    integration card and for operators wiring up a feed."""
+    import time
+    last = _INGEST_STATS["last_frame_monotonic"]
+    return {
+        "listening": True,
+        "session": _SESSION.kind if _SESSION and not _SESSION.ended else None,
+        "frames_ingested": _INGEST_STATS["frames"],
+        "frames_rejected": _INGEST_STATS["rejected"],
+        "sources": _INGEST_STATS["sources"],
+        "queue_depth": _INGEST_Q.qsize(),
+        "last_frame_s_ago": (round(time.monotonic() - last, 1)
+                             if last is not None else None),
+        "endpoints": {
+            "rest": "POST /api/ingest  {format: native|mavlink, frame|frames}",
+            "mqtt": ("set NAVTWIN_MQTT=host[:port] and "
+                     "NAVTWIN_MQTT_TOPIC to enable"),
+            "outbound": "WS /ws streams twin states; GET /api/history "
+                        "for trends",
+        },
+    }
 
 
 @app.websocket("/ws")
@@ -495,4 +590,6 @@ if __name__ == "__main__":
     import uvicorn
 
     logging.basicConfig(level=logging.INFO)
+    # Optional MQTT bridge, only if NAVTWIN_MQTT is set (bridge/mqtt.py).
+    bridge_mqtt.start_listener(_push_ingest_frame)
     uvicorn.run(app, host="127.0.0.1", port=8000)
