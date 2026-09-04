@@ -10,6 +10,7 @@ import { FaultAlert } from "./components/FaultAlert";
 import { MaintenanceAdvisory } from "./components/MaintenanceAdvisory";
 import { HealthTrend, type TrendChannel } from "./components/HealthTrend";
 import { MissionReport } from "./components/MissionReport";
+import { MLPanel } from "./components/MLPanel";
 import { DemoBar } from "./components/DemoBar";
 import { WelcomeOverlay } from "./components/WelcomeOverlay";
 
@@ -157,6 +158,7 @@ export default function App() {
         <FaultAlert twin={twin} />
         <MaintenanceAdvisory twin={twin} />
         <div className="col-stack">
+          <MLPanel twin={twin} />
           <HealthTrend
             history={history}
             histVersion={histVersion}

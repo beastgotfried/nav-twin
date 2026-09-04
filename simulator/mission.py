@@ -158,15 +158,17 @@ def _profile_points(name: str):
                 for t in np.arange(0.0, 300.0 + DT_S, DT_S)]
 
     if name == "full_mission":
-        # One continuous takeoff-to-landing flight that tells the whole
-        # story on its own (the guided demo on the dashboard). Phases are
-        # documented in FULL_MISSION_PHASES below; the fault schedule is
-        # FULL_MISSION_FAULTS. Every operating point and fault here is one
-        # the verification scripts already exercise elsewhere; this profile
-        # only stitches them into a narrative.
+        # One continuous takeoff-to-landing flight that exercises every
+        # capability of the system, rules and learned layer alike, across
+        # all eight fault kinds. Phases and the fault schedule are
+        # documented in FULL_MISSION_PHASES and full_mission_faults below;
+        # every behaviour shown is pinned by verify_mission.py. Pacing
+        # rule: engine faults that heat the head get at least 60 s of
+        # clear time afterwards so the next phase starts clean
+        # (tau_CHT ~ 20 s).
         pts = []
         t = 0.0
-        while t <= 720.0:
+        while t <= 1390.0:
             if t < 90.0:
                 # Phase 1: takeoff and climb to 7600 m.
                 n = _ramp(t, 0, 20, 4800.0, 5500.0)
@@ -174,7 +176,7 @@ def _profile_points(name: str):
                 map_pa, phi = 140_000.0, 1.08
             elif t < 210.0:
                 # Phase 2: descent to cruise, deep rich. Small injector
-                # restriction begins at t=150 (see FULL_MISSION_FAULTS).
+                # restriction begins at t=150 (see full_mission_faults).
                 n, map_pa = 5000.0, 120_000.0
                 alt = _ramp(t, 90, 120, 7600.0, 3000.0)
                 phi = _ramp(t, 90, 120, 1.08, 1.15)
@@ -183,17 +185,42 @@ def _profile_points(name: str):
                 n, map_pa, alt = 5000.0, 120_000.0, 3000.0
                 phi = _ramp(t, 210, 240, 1.15, 0.85)
             elif t < 450.0:
-                # Phase 4: restriction ramps to full blockage (fault side).
+                # Phase 4: restriction ramps to full blockage.
                 n, map_pa, alt, phi = 5000.0, 120_000.0, 3000.0, 0.95
-            elif t < 620.0:
+            elif t < 600.0:
                 # Phase 5: cylinder 3 recovers after its fault clears at
                 # 420, then detonation on cylinder 1 from t=510.
                 n, map_pa, alt, phi = 5000.0, 120_000.0, 4000.0, 1.05
+            elif t < 720.0:
+                # Phase 6: sensor drift on cylinder 2's EGT from t=630.
+                n, map_pa, alt, phi = 5000.0, 120_000.0, 4000.0, 1.00
+            elif t < 840.0:
+                # Phase 7: misfire on cylinder 2 from t=750.
+                n, map_pa, alt, phi = 5000.0, 120_000.0, 4000.0, 1.05
+            elif t < 960.0:
+                # Phase 8: bearing wear ramped from t=870 (oil channels).
+                # Ends at 960 because oil temperature needs ~3 min to
+                # settle (tau_oil = 60 s) and the turbo leg must start
+                # clean; verify_mission.py pins this.
+                n, map_pa, alt, phi = 5000.0, 120_000.0, 4000.0, 1.05
+            elif t < 1080.0:
+                # Phase 9: cooling degradation on cylinder 4, ramped from
+                # t=990; a progressive fault for the RUL layer.
+                n, map_pa, alt, phi = 5000.0, 120_000.0, 4000.0, 1.05
+            elif t < 1260.0:
+                # Phase 10: climb back to altitude with a fading turbo
+                # from t=1110; the MAP gap grows with altitude. The band
+                # has no channel for this; the learned forest does.
+                n = _ramp(t, 1080, 1110, 5000.0, 5500.0)
+                map_pa = 140_000.0
+                alt = _ramp(t, 1080, 1200, 4000.0, 7600.0) if t <= 1200 \
+                    else 7600.0
+                phi = 1.08
             else:
-                # Phase 6: faults cleared, descend home.
-                n = _ramp(t, 620, 650, 5000.0, 3800.0)
-                map_pa = _ramp(t, 620, 650, 120_000.0, 90_000.0)
-                alt = _ramp(t, 620, 720, 4000.0, 800.0)
+                # Phase 11: faults cleared, descend home.
+                n = _ramp(t, 1260, 1300, 5000.0, 3800.0)
+                map_pa = _ramp(t, 1260, 1300, 120_000.0, 90_000.0)
+                alt = _ramp(t, 1260, 1390, 4000.0, 800.0)
                 phi = 0.95
             pts.append(MissionPoint(t, n, map_pa, alt, phi))
             t += DT_S
@@ -234,7 +261,34 @@ FULL_MISSION_PHASES = [
                 "fault on cylinder 1: head temperature climbs while exhaust "
                 "temperature falls. Opposite directions from one cause; no "
                 "single channel sees it."},
-    {"start_s": 620, "name": "Recovery and descent",
+    {"start_s": 630, "name": "A lying sensor",
+     "caption": "Cylinder 2's exhaust probe starts lying at t=630, "
+                "instantly, with no engine change. Physics says a real "
+                "combustion change must reach the head within about a "
+                "minute; when it never does, the system calls it what it "
+                "is: sensor drift, not an engine fault."},
+    {"start_s": 750, "name": "A dead cylinder",
+     "caption": "Ignition fails on cylinder 2. Watch it run COLD, not hot: "
+                "no combustion means no heat. Both its temperatures "
+                "collapse while the other three stay in band."},
+    {"start_s": 870, "name": "Bearings wearing out",
+     "caption": "Oil temperature rising and pressure falling together, "
+                "gradually. The particle filter tracks the wear and "
+                "projects a bounded time to the failure threshold. The "
+                "bounds are the honest part: a spread, not a date."},
+    {"start_s": 990, "name": "Cooling degrades slowly",
+     "caption": "A baffle crack on cylinder 4 worsens over a minute and a "
+                "half. Exhaust stays flat, head temperature climbs, and "
+                "the RUL tracker follows the severity rising with its "
+                "uncertainty bounds."},
+    {"start_s": 1110, "name": "Climb, and a fading turbo",
+     "caption": "The turbo loses efficiency as we climb. Every temperature "
+                "channel stays in band, because physics says they should. "
+                "But the twin watches more than temperatures: the gap "
+                "between commanded and achieved manifold pressure grows "
+                "with altitude, and the diagnosis names the fading turbo "
+                "while the gauges read normal."},
+    {"start_s": 1260, "name": "Recovery and descent",
      "caption": "Faults cleared. Watch the flagged channels settle back "
                 "into the band as the engine cools, then the twin returns "
                 "to nominal for the descent home."},
@@ -259,7 +313,32 @@ def full_mission_faults():
                    t_end_s=420.0),
         # Phase 5: detonation on cylinder 1.
         FaultEvent(510.0, FaultSpec("detonation", cylinder=1, severity=1.0),
-                   t_end_s=620.0),
+                   t_end_s=600.0),
+        # Phase 6: +40 K bias on cylinder 2's EGT reading. Instant, applied
+        # to the reading only; physics never sees it (faults.py).
+        FaultEvent(630.0, FaultSpec("sensor_drift", cylinder=2,
+                                    sensor_channel="EGT_K", bias_K=40.0),
+                   t_end_s=720.0),
+        # Phase 7: complete misfire on cylinder 2.
+        FaultEvent(750.0, FaultSpec("misfire", cylinder=2, severity=1.0),
+                   t_end_s=840.0),
+        # Phase 8: bearing wear ramped over 90 s (oil temperature up,
+        # pressure down, progressively). Ends at 960 so the oil channel
+        # settles before the turbo leg (tau_oil = 60 s).
+        FaultEvent(870.0, FaultSpec("bearing_wear", severity=1.0),
+                   ramp_s=90.0, t_end_s=960.0),
+        # Phase 9: cooling degradation on cylinder 4, ramped over 60 s so
+        # the RUL tracker has a progressive severity to follow. Ends at
+        # 1050 because a z~40 CHT excursion needs over a minute to settle
+        # (tau_CHT = 20 s), and the turbo leg's "band sees nothing" claim
+        # requires a clean band; verify_mission.py pins this.
+        FaultEvent(990.0, FaultSpec("cooling_degradation", cylinder=4,
+                                    severity=1.0), ramp_s=60.0,
+                   t_end_s=1050.0),
+        # Phase 10: turbo degradation for the whole high-altitude leg.
+        # Severity 0.8 keeps achieved MAP physically sensible at 7600 m.
+        FaultEvent(1110.0, FaultSpec("turbo_degradation", severity=0.8),
+                   t_end_s=1260.0),
     ]
 
 

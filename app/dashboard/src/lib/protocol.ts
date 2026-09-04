@@ -43,6 +43,35 @@ export interface DiagnosisEntry {
   label: string;
   confidence: number;
   evidence: string[];
+  source?: string;
+  attribution?: string;
+}
+
+export interface RulProjection {
+  t_to_failure_hr_p10: number;
+  t_to_failure_hr_median: number;
+  t_to_failure_hr_p90: number;
+  framing: string;
+}
+
+export interface RulState {
+  subsystem: string;
+  severity_median: number;
+  severity_p10: number;
+  severity_p90: number;
+  framing: string;
+  projection?: RulProjection;
+}
+
+/** The learned layer's parallel view (twin/ml_bridge.py). Absent on a
+ * rules-only checkout. */
+export interface MLState {
+  available: boolean;
+  note?: string;
+  anomaly_score?: number;
+  anomaly_flag?: boolean;
+  diagnosis?: DiagnosisEntry[];
+  rul?: RulState;
 }
 
 export interface TwinInputs {
@@ -60,6 +89,8 @@ export interface TwinState {
   oil: OilState;
   alarm: AlarmState;
   diagnosis: DiagnosisEntry[];
+  calibrated?: boolean;
+  ml?: MLState;
 }
 
 export type ServerMessage =

@@ -49,16 +49,60 @@ export const FULL_MISSION_PHASES: DemoPhase[] = [
       "falls. Opposite directions from one cause; no single channel sees it.",
   },
   {
-    start_s: 620,
+    start_s: 630,
+    name: "A lying sensor",
+    caption:
+      "Cylinder 2's exhaust probe starts lying at t=630, instantly, with " +
+      "no engine change. Physics says a real combustion change must reach " +
+      "the head within about a minute; when it never does, the system " +
+      "calls it what it is: sensor drift, not an engine fault.",
+  },
+  {
+    start_s: 750,
+    name: "A dead cylinder",
+    caption:
+      "Ignition fails on cylinder 2. Watch it run COLD, not hot: no " +
+      "combustion means no heat. Both its temperatures collapse while " +
+      "the other three stay in band.",
+  },
+  {
+    start_s: 870,
+    name: "Bearings wearing out",
+    caption:
+      "Oil temperature rising and pressure falling together, gradually. " +
+      "The particle filter tracks the wear and projects a bounded time " +
+      "to the failure threshold. The bounds are the honest part: a " +
+      "spread, not a date.",
+  },
+  {
+    start_s: 990,
+    name: "Cooling degrades slowly",
+    caption:
+      "A baffle crack on cylinder 4 worsens over a minute and a half. " +
+      "Exhaust stays flat, head temperature climbs, and the RUL tracker " +
+      "follows the severity rising with its uncertainty bounds.",
+  },
+  {
+    start_s: 1110,
+    name: "Climb, and a fading turbo",
+    caption:
+      "The turbo loses efficiency as we climb. Every temperature channel " +
+      "stays in band, because physics says they should. But the twin " +
+      "watches more than temperatures: the gap between commanded and " +
+      "achieved manifold pressure grows with altitude, and the diagnosis " +
+      "names the fading turbo while the gauges read normal.",
+  },
+  {
+    start_s: 1260,
     name: "Recovery and descent",
     caption:
       "Faults cleared. Watch the flagged channels settle back into the " +
-      "band as the engine cools, then the twin returns to nominal for the " +
-      "descent home.",
+      "band as the engine cools, then the twin returns to nominal for " +
+      "the descent home.",
   },
 ];
 
-export const FULL_MISSION_END_S = 720;
+export const FULL_MISSION_END_S = 1390;
 
 /** The phase a mission time belongs to (last phase whose start <= t). */
 export function phaseAt(phases: DemoPhase[], t: number): number {
@@ -71,7 +115,9 @@ export function phaseAt(phases: DemoPhase[], t: number): number {
 
 /** Cylinder the viewer should watch during a phase, if one matters. */
 export function focusCylinder(phaseIdx: number): number | null {
-  if (phaseIdx >= 2 && phaseIdx <= 3) return 3;
-  if (phaseIdx === 4) return 1;
-  return null;
+  if (phaseIdx >= 1 && phaseIdx <= 3) return 3; // injector phases
+  if (phaseIdx === 4) return 1; // detonation
+  if (phaseIdx === 5 || phaseIdx === 6) return 2; // drift, misfire
+  if (phaseIdx === 8) return 4; // cooling degradation
+  return null; // oil (bearing) and MAP (turbo) phases: no single cylinder
 }

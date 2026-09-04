@@ -111,9 +111,9 @@ def healthy_tracks_nominal():
 def full_mission_windows():
     """The stitched guided-flight profile produces the expected alarm
     windows: quiet through the climb and the rich-cruise small-fault phase,
-    alarmed across the lean, escalation and detonation phases, and back to
-    nominal after the faults clear. This pins the whole composition without
-    duplicating verify_twin.py's per-act assertions."""
+    alarmed across every engine fault phase, quiet through the turbo leg
+    (the MAP gap is not a z channel, so the band structurally cannot see
+    it), and back to nominal after the faults clear."""
     import sys
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
@@ -122,34 +122,66 @@ def full_mission_windows():
 
     tw = Twin(calibrate_s=30.0)
     alarmed = {}
+    forest_flagged = {}
+    rul_seen = {}
+    turbo_named = {}
     for fr in run_mission("full_mission", fault_events=full_mission_faults(),
                           seed=5):
         st = tw.step(fr)
         alarmed[fr["t_s"]] = st["alarm"]["active"]
+        ml = st.get("ml") or {}
+        forest_flagged[fr["t_s"]] = bool(ml.get("anomaly_flag"))
+        rul_seen[fr["t_s"]] = ml.get("rul")
+        labels = [d["label"] for d in st.get("diagnosis", [])]
+        labels += [d["label"] for d in ml.get("diagnosis", [])]
+        turbo_named[fr["t_s"]] = any("turbo" in l for l in labels)
 
-    def window(t0, t1):
-        vals = [v for t, v in alarmed.items() if t0 <= t < t1]
+    def window(d, t0, t1):
+        vals = [v for t, v in d.items() if t0 <= t < t1]
         return sum(vals) / max(len(vals), 1)
 
-    climb = window(40, 90)
-    rich = window(160, 205)
-    lean = window(250, 330)
-    esc = window(400, 420)
-    det = window(520, 610)
-    tail = window(690, 720)
-    check(climb == 0.0, "full mission: no alarms during the climb",
-          f"alarmed {climb*100:.0f}% of the window")
-    check(rich == 0.0,
-          "full mission: 8% restriction at rich cruise correctly ignored",
-          f"alarmed {rich*100:.0f}% of the window")
-    check(lean > 0.8, "full mission: lean cruise alarms on the same fault",
-          f"alarmed {lean*100:.0f}% of the window")
-    check(esc > 0.8, "full mission: escalation to blockage stays alarmed",
-          f"alarmed {esc*100:.0f}% of the window")
-    check(det > 0.8, "full mission: detonation phase alarmed",
-          f"alarmed {det*100:.0f}% of the window")
-    check(tail == 0.0, "full mission: nominal again after faults clear",
-          f"alarmed {tail*100:.0f}% of the window")
+    check(window(alarmed, 40, 90) == 0.0,
+          "full mission: no alarms during the climb")
+    check(window(alarmed, 160, 205) == 0.0,
+          "full mission: 8% restriction at rich cruise correctly ignored")
+    check(window(alarmed, 250, 330) > 0.8,
+          "full mission: lean cruise alarms on the same fault")
+    check(window(alarmed, 400, 420) > 0.8,
+          "full mission: escalation to blockage stays alarmed")
+    check(window(alarmed, 520, 590) > 0.8,
+          "full mission: detonation phase alarmed")
+    check(window(alarmed, 650, 710) > 0.5,
+          "full mission: EGT sensor drift alarms its one channel")
+    check(window(alarmed, 770, 830) > 0.8,
+          "full mission: misfire phase alarmed")
+    check(window(alarmed, 920, 955) > 0.5,
+          "full mission: ramped bearing wear alarms on the oil channels")
+    check(window(alarmed, 1030, 1075) > 0.5,
+          "full mission: ramped cooling degradation alarms once established")
+    check(window(alarmed, 1130, 1250) == 0.0,
+          "full mission: turbo leg invisible to the band (no z channel)")
+    check(window(alarmed, 1300, 1385) == 0.0,
+          "full mission: nominal again after faults clear")
+
+    if any(forest_flagged.values()):
+        # Model artifacts present. The learned layer must corroborate an
+        # established engine fault, and the diagnosis (rules or model)
+        # must name the fading turbo during the high-altitude leg, from
+        # the MAP gap the temperature band cannot see.
+        check(window(forest_flagged, 520, 590) > 0.5,
+              "full mission (ML): forest corroborates the detonation phase")
+        check(window(forest_flagged, 40, 90) == 0.0,
+              "full mission (ML): forest quiet through the healthy climb")
+        check(window(turbo_named, 1120, 1250) > 0.5,
+              "full mission: diagnosis names the fading turbo while the "
+              "temperature band stays quiet")
+        rul_vals = [r for t, r in rul_seen.items()
+                    if 900 <= t < 955 and r]
+        check(any(r["severity_median"] > 0.2 for r in rul_vals),
+              "full mission (ML): RUL tracks the bearing wear ramp "
+              "(severity > 0.2 during the phase)")
+    else:
+        print("  [SKIP] ML windows: no model artifacts, rules-only checkout")
 
 
 if __name__ == "__main__":

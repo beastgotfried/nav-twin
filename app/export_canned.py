@@ -39,6 +39,7 @@ def compact(state):
         "alarm": state["alarm"],
         "diagnosis": state["diagnosis"],
         "calibrated": state["calibrated"],
+        "ml": state.get("ml"),
     }
 
 
