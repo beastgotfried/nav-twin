@@ -2,7 +2,7 @@
  * Canned-mode twin hook for the static hosted build.
  *
  * The hosted site (Vercel) has no FastAPI backend: it replays twin states
- * precomputed by app/export_canned.py from the real mission + twin
+ * precomputed by 10-Twin/export_canned.py from the real mission + twin
  * pipeline, shipped as static JSON under /canned/. The interface mirrors
  * useTwin so the components render identically; the header badge marks the
  * page as a replay, and this file's data is never edited after export.

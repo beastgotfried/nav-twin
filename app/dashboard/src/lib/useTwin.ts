@@ -1,7 +1,7 @@
 /**
  * Twin connection hook. Opens WS /ws (same origin in production, proxied to
  * :8734 by Vite in dev), keeps the latest twin state, accumulates the chart
- * history client-side (app/README.md: state messages are accumulated by
+ * history client-side (10-Twin/README.md: state messages are accumulated by
  * the client; GET /api/history backfills since the last reset), and posts
  * control actions.
  */

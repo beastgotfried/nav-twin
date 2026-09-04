@@ -405,6 +405,14 @@ async def api_control(body: dict = Body(...)):
         sess.fault_events.clear()
         return {"ok": True}
 
+    if action == "speed":
+        # Repace the running mission. The guided demo posts this on every
+        # speed button and only moves its highlight when we agree, so the
+        # validation here is the contract the UI relies on.
+        sess = _require_running()
+        sess.speed = _as_speed(body.get("speed"))
+        return {"ok": True, "speed": sess.speed}
+
     if action == "replay":
         path = body.get("path")
         if not isinstance(path, str) or not path:

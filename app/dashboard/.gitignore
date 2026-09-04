@@ -1,2 +1,5 @@
 .vercel
-10-Twin/dashboard/tsconfig.tsbuildinfo
+# Patterns in a nested .gitignore resolve against THIS directory, so the old
+# repo-relative spelling looked for 10-Twin/dashboard/10-Twin/dashboard/... and
+# matched nothing. The incremental build stamp landed untracked on every build.
+tsconfig.tsbuildinfo

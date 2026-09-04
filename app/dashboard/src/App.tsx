@@ -2,15 +2,17 @@ import { useEffect, useRef, useState } from "react";
 import { useTwin } from "./lib/useTwin";
 import { useCanned } from "./lib/useCanned";
 import { useGuidedDemo } from "./lib/useGuidedDemo";
+import { useFieldDrift } from "./lib/useFieldDrift";
 import { focusCylinder } from "./lib/demoScript";
 import { Header } from "./components/Header";
 import { ControlsBar } from "./components/ControlsBar";
 import { EngineHealth } from "./components/EngineHealth";
+import { EngineHero } from "./components/EngineHero";
+import { MixtureHill } from "./components/MixtureHill";
 import { FaultAlert } from "./components/FaultAlert";
 import { MaintenanceAdvisory } from "./components/MaintenanceAdvisory";
 import { HealthTrend, type TrendChannel } from "./components/HealthTrend";
 import { MissionReport } from "./components/MissionReport";
-import { MLPanel } from "./components/MLPanel";
 import { DemoBar } from "./components/DemoBar";
 import { WelcomeOverlay } from "./components/WelcomeOverlay";
 
@@ -121,8 +123,23 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conn, welcomed]);
 
+  // Escalation is depth: when the twin flags something, the panels that
+  // explain it come forward and the rest stay put. alarm.level already
+  // carries this, so no new state is introduced to drive it.
+  const alarmed = twin?.alarm.active ?? false;
+
+  // The field drifts only while telemetry is actually arriving. Motion that
+  // runs when nothing is streaming would be decoration claiming the system
+  // is busy; tied to the mission clock it means "this is live".
+  const streaming = twin !== null && !paused;
+  // ...and how fast it drifts follows engine speed, so the motion carries a
+  // measured number rather than a chosen one. See lib/useFieldDrift.ts.
+  const atmosphere = useFieldDrift(twin?.inputs.N_rpm ?? null, streaming);
+
   return (
-    <div className="app">
+    <>
+      <div ref={atmosphere} className="atmosphere" aria-hidden="true" />
+      <div className="app">
       {!welcomed && conn === "live" && (
         <WelcomeOverlay
           mode={mode}
@@ -147,18 +164,29 @@ export default function App() {
       ) : (
         <ControlsBar
           scenarios={scenarios}
+          onGuided={startGuided}
           paused={paused}
           control={control}
           setPaused={setPaused}
           clearHistory={clearHistory}
         />
       )}
-      <main className="grid">
-        <EngineHealth twin={twin} selected={channel} onSelect={setChannel} />
-        <FaultAlert twin={twin} />
-        <MaintenanceAdvisory twin={twin} />
+      {/* Two rails around a centre, which is the arrangement the design file
+          settles on. The engine is the subject, so it holds the middle and
+          the instruments float either side of it rather than crowding it out.
+
+          Left rail is the verdict: what is wrong, and what to do about it.
+          Right rail is the evidence: the band chart, the mission summary and
+          the mixture argument. A reader moves left to right, from claim to
+          proof, which is the order those questions actually get asked in. */}
+      <main className={`grid ${alarmed ? "grid-alarmed" : ""}`}>
         <div className="col-stack">
-          <MLPanel twin={twin} />
+          <FaultAlert twin={twin} />
+          <MaintenanceAdvisory twin={twin} />
+          <EngineHealth twin={twin} selected={channel} onSelect={setChannel} />
+        </div>
+        <EngineHero twin={twin} />
+        <div className="col-stack">
           <HealthTrend
             history={history}
             histVersion={histVersion}
@@ -167,8 +195,10 @@ export default function App() {
             phases={guided.guided ? guided.phases : undefined}
           />
           <MissionReport twin={twin} stats={stats} />
+          <MixtureHill twin={twin} />
         </div>
       </main>
-    </div>
+      </div>
+    </>
   );
 }

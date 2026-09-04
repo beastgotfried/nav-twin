@@ -1,18 +1,18 @@
 """Mock twin server for dashboard development (NOT the MVP backend).
 
-Stands in for app/server.py while the twin core is built in parallel.
-It speaks the exact protocol from app/README.md (WS /ws hello + state,
+Stands in for 10-Twin/server.py while the twin core is built in parallel.
+It speaks the exact protocol from 10-Twin/README.md (WS /ws hello + state,
 POST /api/control, GET /api/history) so the dashboard's data path is
 identical to production, and it serves dashboard/dist/ statically so the
 built app can be exercised end to end.
 
 Number provenance, per the repo rules:
 
-- Observed telemetry comes from simulator/mission.py run_mission, the
+- Observed telemetry comes from 08-Simulator/mission.py run_mission, the
   verified mission generator, faults included.
 - Predicted values come from predict_steady_state on the reported inputs
-  with no faults, which is what app/twin/residual.py will do.
-- Sigmas come from simulator/data/sigma_table.npz (the offline Monte
+  with no faults, which is what 10-Twin/twin/residual.py will do.
+- Sigmas come from 08-Simulator/data/sigma_table.npz (the offline Monte
   Carlo table), interpolated with scipy.
 - The alarm persistence window (PERSIST_TICKS below) and the diagnosis
   ranking are MOCK heuristics, explicitly ASSUMED, existing only so every
@@ -42,8 +42,11 @@ from scipy.interpolate import RegularGridInterpolator
 
 DASHBOARD_DIR = Path(__file__).resolve().parent.parent
 DIST_DIR = DASHBOARD_DIR / "dist"
-SIM_DIR = Path(__file__).resolve().parents[3] / "simulator"
-sys.path.insert(0, str(SIM_DIR))
+# The simulator lives at <repo>/simulator in this tree.
+_REPO_ROOT = DASHBOARD_DIR.parent.parent
+SIM_DIR = _REPO_ROOT / "simulator"   # the sigma table is read from disk
+if str(SIM_DIR) not in sys.path:
+    sys.path.insert(0, str(SIM_DIR))
 
 from mission import run_mission, MISSION_PROFILES  # noqa: E402
 from physics.atmosphere import isa_atmosphere  # noqa: E402
@@ -144,7 +147,7 @@ def mock_diagnosis(cylinders):
 
 class TwinMock:
     """Holds the running mission and turns telemetry frames into the twin
-    state JSON of app/README.md."""
+    state JSON of 10-Twin/README.md."""
 
     def __init__(self):
         self.lock = threading.Lock()
@@ -154,6 +157,9 @@ class TwinMock:
         self.thread = None
         self.running = False
         self.paused = False
+        # Tick-rate multiplier, exactly as server.py's session carries it.
+        # 1.0 is real time; 4.0 streams four frames per wall second.
+        self.speed = 1.0
         self.latest = None
         self.history = None
         self.exceed = {}            # channel key -> consecutive |z|>=2 ticks
@@ -169,7 +175,7 @@ class TwinMock:
 
     # --- mission lifecycle ------------------------------------------------
 
-    def start(self, scenario, fault_events=()):
+    def start(self, scenario, fault_events=(), speed=1.0):
         self.stop()
         with self.lock:
             self.scenario = scenario
@@ -181,6 +187,7 @@ class TwinMock:
             self.gen = run_mission(scenario, self.fault_events, seed=SEED)
             self.running = True
             self.paused = False
+            self.speed = speed
             self.thread = threading.Thread(target=self._loop, daemon=True)
             self.thread.start()
 
@@ -239,7 +246,12 @@ class TwinMock:
                 self._append_history(state)
             self._broadcast({"type": "state", "state": state})
             dt = time.time() - t0
-            time.sleep(max(0.0, TICK_S - dt))
+            with self.lock:
+                speed = self.speed
+            # Read inside the loop rather than captured at start, so a speed
+            # change repaces the mission already running instead of only the
+            # next one.
+            time.sleep(max(0.0, TICK_S / speed - dt))
 
     def _build_state(self, frame):
         alt = frame["altitude_m"]
@@ -277,6 +289,13 @@ class TwinMock:
                 "sigma_CHT_K": sc,
                 "z_EGT": float(ze),
                 "z_CHT": float(zc),
+                # phi is already computed above to pick each sigma, and the
+                # real server emits it, so dropping it here made the mock
+                # quietly lie about the protocol: the mixture panel's cylinder
+                # markers never rendered against the mock and did against
+                # 10-Twin/server.py. Computed FORWARD from fuel and air, never
+                # inverted from EGT (Handbook 3.5, 00-STREAM 6.4).
+                "phi": float(phi),
                 "status": z_class(ze if abs(ze) >= abs(zc) else zc),
             })
 
@@ -495,7 +514,13 @@ class Handler(BaseHTTPRequestHandler):
                 events = [FaultEvent(t_start_s=0.0, fault=parse_fault(f),
                                      ramp_s=float(f.get("ramp_s", 0.0)))
                           for f in body.get("fault_events", [])]
-                MOCK.start(scenario, events)
+                start_speed = body.get("speed", 1.0)
+                if isinstance(start_speed, bool) or not isinstance(
+                        start_speed, (int, float)) or float(start_speed) <= 0.0:
+                    return self._send_json(
+                        {"error": f"'speed' must be a positive number, "
+                                  f"got {start_speed!r}"}, 400)
+                MOCK.start(scenario, events, float(start_speed))
             elif action == "pause":
                 MOCK.paused = True
             elif action == "resume":
@@ -507,6 +532,28 @@ class Handler(BaseHTTPRequestHandler):
                                  float(body.get("ramp_s", 0.0)))
                 if not ok:
                     return self._send_json({"error": "no mission running"}, 409)
+            elif action == "speed":
+                # The dashboard's guided flight posts this on every speed
+                # button, and the mock did not implement it: the request 400ed
+                # with "unknown action", the client dropped the failure, and
+                # the button lit up the new rate while the mission carried on
+                # at the old one. The mock is supposed to be indistinguishable
+                # from server.py over this protocol, so the validation below
+                # is server.py's _as_speed, rule for rule.
+                speed = body.get("speed")
+                if isinstance(speed, bool) or not isinstance(speed, (int, float)):
+                    return self._send_json(
+                        {"error": f"'speed' must be a positive number, "
+                                  f"got {speed!r}"}, 400)
+                if float(speed) <= 0.0:
+                    return self._send_json(
+                        {"error": f"'speed' must be positive, got {speed!r}"},
+                        400)
+                if not MOCK.running:
+                    return self._send_json({"error": "no mission running"}, 409)
+                with MOCK.lock:
+                    MOCK.speed = float(speed)
+                return self._send_json({"ok": True, "speed": float(speed)})
             elif action == "clear_faults":
                 MOCK.clear_faults()
             elif action == "replay":

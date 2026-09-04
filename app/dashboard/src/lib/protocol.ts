@@ -1,5 +1,5 @@
 /**
- * Wire protocol types, mirroring app/README.md exactly. The twin state
+ * Wire protocol types, mirroring 10-Twin/README.md exactly. The twin state
  * is emitted once per mission timestep by server.py (WS /ws) and rendered
  * here without modification: every number on screen traces back to one of
  * these fields.
@@ -18,6 +18,13 @@ export interface CylinderState {
   sigma_CHT_K: number;
   z_EGT: number;
   z_CHT: number;
+  /**
+   * Equivalence ratio, computed FORWARD from fuel flow and air flow by the
+   * twin. Never inverted from EGT: that map is two-valued, so inverting it
+   * picks the wrong branch half the time (00-STREAM 6.4, Handbook 3.5).
+   * Optional because a replay exported before this field existed lacks it.
+   */
+  phi?: number;
   status: ChannelStatus;
 }
 
@@ -43,35 +50,6 @@ export interface DiagnosisEntry {
   label: string;
   confidence: number;
   evidence: string[];
-  source?: string;
-  attribution?: string;
-}
-
-export interface RulProjection {
-  t_to_failure_hr_p10: number;
-  t_to_failure_hr_median: number;
-  t_to_failure_hr_p90: number;
-  framing: string;
-}
-
-export interface RulState {
-  subsystem: string;
-  severity_median: number;
-  severity_p10: number;
-  severity_p90: number;
-  framing: string;
-  projection?: RulProjection;
-}
-
-/** The learned layer's parallel view (twin/ml_bridge.py). Absent on a
- * rules-only checkout. */
-export interface MLState {
-  available: boolean;
-  note?: string;
-  anomaly_score?: number;
-  anomaly_flag?: boolean;
-  diagnosis?: DiagnosisEntry[];
-  rul?: RulState;
 }
 
 export interface TwinInputs {
@@ -89,8 +67,14 @@ export interface TwinState {
   oil: OilState;
   alarm: AlarmState;
   diagnosis: DiagnosisEntry[];
+  /**
+   * False until the twin has frozen its discrepancy baseline delta, which
+   * happens after the opening calibration window (twin/__init__.py,
+   * DEFAULT_CALIBRATE_S). While false, delta is zero and the z values are
+   * provisional. Optional because a replay exported before this field
+   * existed will not carry it.
+   */
   calibrated?: boolean;
-  ml?: MLState;
 }
 
 export type ServerMessage =
@@ -113,7 +97,7 @@ export interface HistoryResponse {
   >;
 }
 
-/** Fault kinds accepted by POST /api/control, from simulator/physics/faults.py. */
+/** Fault kinds accepted by POST /api/control, from 08-Simulator/physics/faults.py. */
 export const FAULT_KINDS = [
   "misfire",
   "injector_restriction",

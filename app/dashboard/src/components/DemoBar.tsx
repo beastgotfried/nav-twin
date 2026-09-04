@@ -64,7 +64,10 @@ export function DemoBar({
           </span>
         </div>
 
-        <div className="demo-timeline" role="list">
+        {/* A row of seek buttons, not a list: role="listitem" on a button
+            overrides its button role, so a screen reader stops announcing
+            these as activatable at all. The group carries the label. */}
+        <div className="demo-timeline" role="group" aria-label="Flight phases">
           {phases.map((p, i) => {
             const next = i + 1 < phases.length ? phases[i + 1].start_s : total;
             const width = ((next - p.start_s) / total) * 100;
@@ -75,11 +78,12 @@ export function DemoBar({
               <button
                 key={p.start_s}
                 type="button"
-                role="listitem"
                 className={`demo-seg ${current ? "demo-seg-current" : ""} ${done ? "demo-seg-done" : ""}`}
                 style={{ width: `${width}%` }}
                 onClick={() => canSeek && onSeek(p.start_s)}
                 disabled={!canSeek}
+                aria-current={current ? "step" : undefined}
+                aria-label={`Phase ${i + 1}, ${p.name}, from ${fmtClock(p.start_s)}`}
                 title={`${p.name} (from ${fmtClock(p.start_s)})`}
               >
                 <span className="demo-seg-fill" style={{ width: `${fill}%` }} />

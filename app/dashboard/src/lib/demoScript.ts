@@ -2,7 +2,10 @@
  * The guided flight's narrative, shared by the DemoBar and the fallback
  * paths. The canned full_mission.json carries the same table (exported from
  * mission.py); this local copy covers the live-server mode, where the
- * backend streams states without phase metadata.
+ * backend streams states without phase metadata. It mirrors
+ * simulator/mission.py FULL_MISSION_PHASES exactly and contains no data,
+ * only phase names and captions; every number on screen still comes from
+ * the twin.
  */
 
 import type { DemoPhase } from "./useCanned";

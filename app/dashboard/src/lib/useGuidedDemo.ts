@@ -53,9 +53,21 @@ export function useGuidedDemo(api: GuidedApi) {
   );
 
   const setSpeed = useCallback(
-    (mult: number) => {
-      setSpeedState(mult);
-      api.setSpeed?.(mult);
+    async (mult: number) => {
+      if (api.setSpeed) {
+        setSpeedState(mult);
+        api.setSpeed(mult);   // canned: retime the client-side ticker
+        return;
+      }
+      // Live: the server paces the stream, so ask it to repace, and only
+      // move the highlight if it agreed. Setting it first and firing the
+      // request into the void meant the button asserted a rate the mission
+      // was not running at, which is exactly what happened against the mock
+      // server: it had no "speed" action, answered 400, and the failure was
+      // dropped. A control that lies about the state of the system is worse
+      // than one that does nothing.
+      const ok = await api.control({ action: "speed", speed: mult });
+      if (ok) setSpeedState(mult);
     },
     [api],
   );

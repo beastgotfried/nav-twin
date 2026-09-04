@@ -2,10 +2,16 @@ import type { AlarmLevel, TwinState } from "../lib/protocol";
 import { fmtClock, fmtGrouped, fmtScenario } from "../lib/format";
 import type { ConnState } from "../lib/useTwin";
 
-const LEVEL_COLOR: Record<AlarmLevel, string> = {
-  nominal: "var(--green)",
-  caution: "var(--orange)",
-  warning: "var(--red)",
+/**
+ * Level drives a class, not an inline colour, so the nominal state can be
+ * quiet (tinted) while caution and warning are solid. A solid bright fill at
+ * every level made "all is well" the loudest object on a dark screen and
+ * left the alarm nowhere to escalate to.
+ */
+const LEVEL_CLASS: Record<AlarmLevel, string> = {
+  nominal: "status-nominal",
+  caution: "status-caution",
+  warning: "status-warning",
 };
 
 export function StatusPill({ level }: { level: AlarmLevel | null }) {
@@ -13,7 +19,7 @@ export function StatusPill({ level }: { level: AlarmLevel | null }) {
     return <span className="status-pill status-standby">STANDBY</span>;
   }
   return (
-    <span className="status-pill" style={{ background: LEVEL_COLOR[level] }}>
+    <span className={`status-pill ${LEVEL_CLASS[level]}`}>
       {level.toUpperCase()}
     </span>
   );
@@ -54,6 +60,14 @@ export function Header({
         ))}
       </div>
       <div className="header-right">
+        {twin?.calibrated === false && (
+          <span
+            className="calib-badge mono"
+            title="The twin is fitting its discrepancy baseline on the opening healthy window (Kennedy-O'Hagan delta). Until it freezes, delta is zero and the residuals on screen are provisional."
+          >
+            CALIBRATING
+          </span>
+        )}
         {mode === "canned" && (
           <span
             className="replay-badge mono"

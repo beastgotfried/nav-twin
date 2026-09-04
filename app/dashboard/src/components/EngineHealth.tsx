@@ -2,7 +2,7 @@ import type { ChannelStatus, TwinState } from "../lib/protocol";
 import { fmtGrouped, fmtKPa, fmtTempC, fmtZ } from "../lib/format";
 import type { TrendChannel } from "./HealthTrend";
 
-/** Residual colouring per app/README.md: caution from |z| in [2, 3),
+/** Residual colouring per 10-Twin/README.md: caution from |z| in [2, 3),
  * warning from |z| >= 3. */
 function zClass(z: number): string {
   const a = Math.abs(z);
@@ -147,6 +147,15 @@ export function EngineHealth({
             unit="kg/h"
             sub={<span className="row-sub">commanded</span>}
           />
+          {/* z appears on nearly every row here and was defined nowhere on
+              screen. deck-strategy.md section 2: label technically, annotate
+              in plain language. The symbol is the technical label; this is
+              the sentence the rest of the room reads. */}
+          <p className="panel-plain">
+            z is how far a reading sits from what the twin predicted, measured
+            in its own uncertainty. Past 2 is worth watching, past 3 the model
+            cannot explain it.
+          </p>
         </>
       )}
     </section>

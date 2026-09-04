@@ -4,7 +4,14 @@
  * explore the dashboard directly. Every claim on it is verified behaviour
  * of the pipeline; the fine print says the replay is precomputed by the
  * real twin, matching the header's REPLAY badge.
+ *
+ * Built on the native <dialog> in modal mode, which is where the focus trap,
+ * the Escape key, the inert background and the modal semantics come from.
+ * The hand-rolled div version had none of those: keyboard users tabbed
+ * straight through to the dashboard behind it.
  */
+
+import { useEffect, useRef } from "react";
 
 export function WelcomeOverlay({
   mode,
@@ -15,11 +22,27 @@ export function WelcomeOverlay({
   onGuided: () => void;
   onExplore: () => void;
 }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (el && !el.open) el.showModal();
+  }, []);
+
   return (
-    <div className="welcome-backdrop">
+    <dialog
+      ref={ref}
+      className="welcome-backdrop"
+      aria-labelledby="welcome-title"
+      // Escape would close the dialog without choosing a way in, leaving a
+      // dashboard nobody asked for. Dismissing it IS "explore on my own".
+      onCancel={(e) => {
+        e.preventDefault();
+        onExplore();
+      }}
+    >
       <div className="welcome-card">
         <p className="welcome-kicker mono">AERO PISTON ENGINE DIGITAL TWIN</p>
-        <h1 className="welcome-title">SITAARA</h1>
+        <h1 className="welcome-title" id="welcome-title">SITAARA</h1>
         <p className="welcome-lede">
           A physics-based digital twin flying a MALE UAV engine mission. It
           predicts what every sensor should read, measures the gap against
@@ -46,6 +69,6 @@ export function WelcomeOverlay({
             : "Live: the twin is running on this machine, computing predictions as you watch."}
         </p>
       </div>
-    </div>
+    </dialog>
   );
 }

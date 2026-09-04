@@ -125,6 +125,10 @@ class ResidualEngine:
                 "CHT_pred_K": lp["CHT_K"][i] + d["CHT_K"][i],
                 "sigma_EGT_K": sig_e, "sigma_CHT_K": sig_c,
                 "z_EGT": z_e, "z_CHT": z_c,
+                # Forward-computed equivalence ratio, from fuel and air.
+                # The mixture panel places cylinders on the hill with it.
+                # Never inverted from EGT (that map is two-valued).
+                "phi": c["phi"],
                 "status": _status(max(abs(z_e), abs(z_c))),
             })
 

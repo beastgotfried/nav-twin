@@ -36,8 +36,21 @@ export function FaultAlert({ twin }: { twin: TwinState | null }) {
     ? ` cyl ${twin.alarm.cylinder}`
     : "";
 
+  // The announcement is derived from the alarm level and the leading
+  // hypothesis only, so the DOM text changes when the diagnosis changes and
+  // not on every frame. The live region used to wrap the whole card, which
+  // re-read the confidences and evidence lines on every tick, up to sixteen
+  // times a second at 16x.
+  const announcement = active
+    ? `${level}. ${entries[0]?.label ?? "unexplained residual excursion"}` +
+      (twin?.alarm.cylinder != null ? `, cylinder ${twin.alarm.cylinder}` : "")
+    : "All channels inside the predicted band.";
+
   return (
-    <section className={cardClass} aria-live="polite">
+    <section className={cardClass}>
+      <p className="sr-only" role="status">
+        {announcement}
+      </p>
       <h2 className={titleClass}>
         FAULT ALERT
         {titleSuffix && <span className="title-suffix">{titleSuffix}</span>}

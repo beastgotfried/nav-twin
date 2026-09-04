@@ -1,7 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// Dev server proxies the twin backend (app/server.py, default port
+// Dev server proxies the twin backend (10-Twin/server.py, default port
 // 8734). In production the FastAPI server serves dist/ itself, so the
 // client always talks to same-origin relative paths.
 export default defineConfig({

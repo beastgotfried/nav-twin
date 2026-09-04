@@ -1,51 +1,74 @@
 /*
- * Sitaara operator dashboard styles - glass cockpit redesign.
+ * Sitaara operator dashboard styles.
  *
- * Language: dark glassmorphism panels over a deep charcoal-navy canvas,
- * neumorphic (dual-shadow) interactive controls, spring-like motion.
- * Semantic channel colours are preserved from 09-Visuals/style.py because
- * they carry data meaning: blue = predicted, red = observed/fault,
- * orange = caution, green = nominal. Hues are re-tuned for dark glass.
- * Fonts: Geist Variable for UI, Geist Mono for numbers.
+ * The four accents still mirror 09-Visuals/style.py byte for byte, and still
+ * carry the same fixed meaning (blue predicted, red fault, orange caution,
+ * green nominal). Only the ground moved. Measured on the dark ground all four
+ * clear WCAG AA unchanged (blue 6.53:1, green 7.76:1, orange 6.23:1, red
+ * 5.22:1), which is why the flip to dark cost the instrument language
+ * nothing: an Astryx Badge, a matplotlib figure and an SVG trace still agree.
+ *
+ * Fonts: Public Sans for UI, Roboto Mono for numbers, with system fallbacks.
  */
 
 :root {
-  --bg: #0a0e14;
-  --ink: #e9eff5;
-  --ink-soft: #9aa9b8;
-  --ink-mute: #64738484;
+  /* Text ramp. --ink is the strongest, --ink-soft is body, --text-faint is
+     de-emphasised but still passes AA (4.79:1 on a panel) because units and
+     hints are read, not decoration. */
+  --ink: #e8ebed;
+  --ink-soft: #98a1a8;
+  --text-faint: #7e888f;
 
-  /* glass surfaces */
-  --glass: rgba(255, 255, 255, 0.045);
-  --glass-strong: rgba(255, 255, 255, 0.07);
-  --glass-edge: rgba(255, 255, 255, 0.09);
-  --glass-hi: rgba(255, 255, 255, 0.14);
+  /* Ground and surfaces. Near-black with a slight cool cast, never pure
+     black: pure #000 kills the panel blur and reads as a hole on a
+     projector. --paper is translucent because panels float. */
+  --ground: #0a0c0e;
+  --surface: #101316;
+  /* Raised from 0.72 once the aircraft moved behind the panels. At 0.72 the
+     wing structure read straight through a panel and competed with the text
+     on it. The panels still float; they are just no longer windows. */
+  --paper: rgba(23, 27, 31, 0.88);
+  --paper-solid: #171b1f;
+  --paper-lift: rgba(29, 34, 38, 0.88);
 
-  /* semantic channels (dark-tuned, saturation held below neon) */
-  --blue: #4fb0ff;
-  --green: #41cf78;
-  --orange: #f2a355;
-  --red: #ff5d74;
-  --blue-wash: #4fb0ff1f;
-  --orange-wash: #f2a3551f;
-  --green-wash: #41cf781f;
-  --red-wash: #ff5d741f;
+  /* Structure: hairlines, not lines. On dark, a 1px solid border reads as a
+     seam; a low-alpha white edge reads as a lit rim. */
+  --border: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.2);
   --grid: rgba(255, 255, 255, 0.07);
 
-  /* neumorphic shadow pair on dark */
-  --neu-raised:
-    5px 5px 12px rgba(2, 5, 10, 0.55),
-    -3px -3px 8px rgba(255, 255, 255, 0.035);
-  --neu-inset:
-    inset 4px 4px 9px rgba(2, 5, 10, 0.6),
-    inset -3px -3px 7px rgba(255, 255, 255, 0.04);
+  /* Inner fills. Controls sitting ON a glass panel must not be glass
+     themselves: stacking backdrop-filter inside backdrop-filter blurs the
+     panel rather than the field behind it, and the control dissolves. These
+     are flat tints instead. */
+  --fill: rgba(255, 255, 255, 0.05);
+  /* The same surface one step brighter, for hover and for the moment after a
+     control is acknowledged. */
+  --fill-lift: rgba(255, 255, 255, 0.1);
+  --fill-hover: rgba(255, 255, 255, 0.1);
 
-  --sans: "Geist Variable", -apple-system, "Segoe UI", Arial, sans-serif;
-  --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  /* Locked accents, unchanged. */
+  --blue: #0099ff;
+  --green: #2fbb45;
+  --orange: #dc762d;
+  --red: #fb2c55;
 
-  --radius: 20px;
-  --radius-inner: 13px;
-  --ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
+  /* Washes carry the fills. The light sheet used 13% alpha over white; over
+     near-black the same alpha vanishes, so these are raised to stay legible
+     at the same perceptual weight. */
+  --blue-wash: rgba(0, 153, 255, 0.2);
+  --orange-wash: rgba(220, 118, 45, 0.2);
+  --green-wash: rgba(47, 187, 69, 0.2);
+  --red-wash: rgba(251, 44, 85, 0.2);
+
+  --sans: "Public Sans", -apple-system, "Segoe UI", Arial, sans-serif;
+  --mono: "Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --radius: 14px;
+
+  /* Floating panels: one blur, one shadow, reused everywhere. */
+  --glass-blur: blur(18px) saturate(1.15);
+  --glass-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
 }
 
 * {
@@ -59,25 +82,334 @@ body {
 }
 
 body {
-  background: var(--bg);
+  background: var(--ground);
   color: var(--ink-soft);
   font-family: var(--sans);
   font-size: 14px;
   line-height: 1.45;
-  min-height: 100dvh;
+  min-height: 100vh;
 }
 
-/* Grain only: a fixed, pointer-events-none noise layer. The canvas itself
-   stays flat off-black; no mesh or gradient washes behind the panels. */
-
-body::after {
-  content: "";
+/* --- atmosphere ---------------------------------------------------------
+ * The field the instruments float over: contour lines, a hairline grid, a
+ * slow radial lift, and a fine grain.
+ *
+ * The contours are texture, not cartography, and the distinction is load
+ * bearing. What it carries is atmosphere; what it must never carry is a
+ * scale bar, coordinates or a place name, because those turn a mood into an
+ * assertion about terrain this project does not model, on a system whose
+ * whole claim is that everything on screen is computed. Keep it unlabelled.
+ *
+ * Pure CSS, no assets, no JS, and pinned behind everything with a fixed
+ * layer so it never scrolls or repaints with content.
+ */
+.atmosphere {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: 0;
   pointer-events: none;
-  opacity: 0.05;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
+  /* Two soft lifts and the ground. The 64px hairline graph-paper grid that
+     used to sit here is gone: it was a second regular pattern fighting the
+     contours, and two overlapping grids read as noise rather than as depth.
+     The contours carry the texture on their own. */
+  /* Lit from BELOW. The lift used to sit at the top of the screen, which put
+     the brightest part of the field directly behind the header and the
+     control strip, where there is already the most ink. Anchored at the
+     bottom it fills the open space under the panels instead, so the field
+     reads as something the dashboard floats above rather than as a glow
+     behind its own furniture. */
+  background:
+    radial-gradient(
+      ellipse 120% 85% at 50% 100%,
+      rgba(0, 153, 255, 0.12) 0%,
+      transparent 62%
+    ),
+    radial-gradient(
+      ellipse 100% 60% at 50% 88%,
+      rgba(255, 255, 255, 0.03) 0%,
+      transparent 58%
+    ),
+    var(--ground);
+  /* Vignette, anchored near the bottom edge so the field is strongest in the
+     open space under the panels and thins out toward the header.
+
+     It used to be centred at 40%, which put the densest contours across the
+     top of the screen, directly behind the title bar and the control strip.
+     That is where the screen already has the most ink, and it is also the
+     one band of the page that is never empty, so the texture was competing
+     there and absent where there was actually room for it. Anchoring it low
+     inverts that: the field comes up from the bottom, which is also where
+     the lift is, and the top of the screen is quiet.
+
+     The far corners fall to transparent, which shows body's --ground: the
+     same colour, so the falloff is a fade rather than an edge. */
+  mask-image: radial-gradient(
+    ellipse 150% 105% at 50% 92%,
+    #000 40%,
+    rgba(0, 0, 0, 0.45) 78%,
+    transparent 100%
+  );
+}
+
+/* Contours, on their own layer so they can drift without dragging the grid
+   or the gradients with them.
+
+   Computed, not drawn and not filtered: 10-Twin/export_topo.py contours a
+   periodic height field with marching squares and writes public/topo.svg.
+   Two earlier versions are recorded in that file's docstring, one an
+   feTurbulence filter and one a bitmap tile, along with why each was
+   replaced. The short of it is that quantised noise is not contour lines and
+   a raster cannot be scaled or restyled.
+
+   Vector, so it stays crisp at any tile size and on any display. Seamless by
+   construction rather than by blending, which the exporter asserts before it
+   writes: every wave in the field has an integer wave vector, so the tile's
+   period is exactly its width.
+
+   Oversized and offset so the drift never exposes an edge. */
+.atmosphere::before {
+  content: "";
+  position: absolute;
+  /* The overhang must be at least the drift distance, or the layer walks its
+     own edge into view and the field visibly slides off the screen. It is in
+     px rather than % for exactly that reason: a percentage is measured
+     against the viewport, so on a narrow window -12% was only ~190px of
+     margin against 620px of travel. */
+  inset: -640px;
+  background-image: url("/topo.svg");
+  background-size: 620px 620px;
+  opacity: 0.5;
+  will-change: transform;
+  /* Driven from lib/useFieldDrift.ts, which writes --drift-y on .atmosphere
+     once per frame at a rate set by engine RPM. Positive is DOWN the screen:
+     the ground the aircraft is over travels backwards past it.
+
+     This used to be a fixed 140 s keyframe, parked and unparked by a class.
+     A keyframe cannot follow a number: changing animation-duration on a
+     running animation recomputes the position against the new duration, so
+     the field jumps to a different phase of the loop on every rate change.
+     Accumulating the offset per frame has no discontinuity. See that file. */
+  transform: translate3d(0, var(--drift-y, 0px), 0);
+}
+
+/* The drift runs ONLY while a mission is streaming, and its rate follows
+   engine speed. A background that moves when nothing is happening is
+   decoration that lies about the system being busy, and one that moves at a
+   rate nobody can point at is decoration either way. Tied to RPM it says
+   both "this is live" and how hard the engine is working.
+
+   Stopping is the absence of travel, not a paused animation, so there is no
+   class for it and nothing to snap back to an origin. The hook eases the
+   rate to zero and the field holds exactly where it stopped.
+
+   prefers-reduced-motion is handled in the hook, which never starts its
+   frame loop, so --drift-y stays unset and the fallback 0px applies. */
+
+/* Grain. A single inline SVG turbulence, tiled by the browser, at an alpha
+   low enough to read as texture rather than noise. Kept separate from the
+   grid so the two can be tuned independently. */
+.atmosphere::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.09;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+}
+
+/* --- the hero ----------------------------------------------------------
+ * Airframe outline, engine glowing inside it, sitting between the field and
+ * the panels. See EngineHero.tsx for why the engine takes the colour and the
+ * airframe does not.
+ *
+ * The two PNGs are greyscale line art on transparency, so the ALPHA is the
+ * drawing. Each is used as a mask with a flat colour painted through it,
+ * which is what gives exact control of the colour and a clean interpolation
+ * across the ramp. A chained brightness/sepia/hue-rotate filter, the usual
+ * way to recolour an image, cannot hit a specified colour and goes muddy in
+ * the middle. Reasoning: 03-Design/layout-study/README.md.
+ */
+/* The hero is a grid item so the centre column exists and the rails stay
+   symmetric around it, but it draws nothing itself. Its layers are FIXED to
+   the viewport: the aircraft is the frame the instruments sit in, so it holds
+   still while the panels scroll past it. */
+.hero {
+  position: relative;
+  align-self: stretch;
+  min-height: 60vh;
+  pointer-events: none;
+}
+
+/* Geometry lives HERE and only here, for both layers.
+ *
+ * The two layers must be drawn at exactly the same size and position or the
+ * outline stops occluding the tint and the aircraft renders as two overlapping
+ * planes with mismatched wings. That is not hypothetical: it happened, because
+ * a later rule re-declared background-size for the outline alone. Nothing
+ * below may set size or position again.
+ *
+ * Sized by HEIGHT so the aircraft runs nose to tail down the screen and the
+ * wings pass behind the rails. Fitting it by width instead left a small
+ * aeroplane marooned in a tall column.
+ *
+ * On sharpness, which is why these are SVG and not PNG.
+ *
+ * The art in the design file is 1024x768 and that is the ceiling. Figma's
+ * raw images ARE the uploads, so there is nothing larger to fetch, and
+ * exporting a node at 2x or 4x re-renders the composite with the group's
+ * background baked in and no alpha rather than finding more detail. Drawing
+ * the aircraft any larger than about 70vh therefore meant the browser
+ * upscaling a 768px source, and bilinear upscaling is what turns hairlines
+ * to mush.
+ *
+ * So the line art is traced to paths instead (10-Twin/trace_airframe.mjs).
+ * Tracing invents no detail either, but it removes the resolution ceiling
+ * entirely: the aircraft is now resolution independent and stays crisp at
+ * any size and on any display. It is also smaller, 236 kB for the pair
+ * against 465 kB for the two 1024x768 PNGs it replaces.
+ */
+.hero-layer {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-repeat: no-repeat;
+  /* Pushed below the header and the flight bar, which together own the top
+     ~220px, so the aircraft sits under the dash rather than behind it. */
+  background-position: center calc(50% + 72px);
+  background-size: auto 82vh;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center calc(50% + 72px);
+  mask-position: center calc(50% + 72px);
+  -webkit-mask-size: auto 82vh;
+  mask-size: auto 82vh;
+}
+
+/* The pool under the aircraft.
+ *
+ * Sits between the contour field and the airframe, fixed like the layers
+ * above it and centred on the same point, so it travels with the aircraft
+ * rather than with the page. Soft-edged: a hard-edged darkening would read as
+ * a panel, and this is meant to read as depth. */
+.hero-veil {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  /* Darkened AND blurred. Darkening alone still left contour lines running
+     through the airframe at full sharpness, and two sets of crisp line work
+     on top of each other is what made the middle of the screen hard to read.
+     Blurring the field behind the aircraft throws it out of focus instead, so
+     the airframe is the only thing in the middle of the screen with edges. */
+  background: rgba(4, 5, 7, 0.93);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  /* The falloff is on the mask rather than in the colour, so the blur fades
+     out with the darkening instead of stopping at a visible rectangle. */
+  -webkit-mask-image: radial-gradient(
+    ellipse 52% 46% at 50% calc(50% + 72px),
+    #000 0%,
+    #000 48%,
+    rgba(0, 0, 0, 0.6) 72%,
+    transparent 92%
+  );
+  mask-image: radial-gradient(
+    ellipse 52% 46% at 50% calc(50% + 72px),
+    #000 0%,
+    #000 48%,
+    rgba(0, 0, 0, 0.6) 72%,
+    transparent 92%
+  );
+}
+
+/* Where backdrop-filter is unavailable the darkening still lands; only the
+   defocus is lost, which is a graceful degradation rather than a broken one. */
+@supports not (backdrop-filter: blur(1px)) {
+  .hero-veil {
+    background: rgba(4, 5, 7, 0.95);
+  }
+}
+
+/* The engine internals, which take the temperature colour. */
+.hero-engine {
+  -webkit-mask-image: url("/airframe-engine.svg");
+  mask-image: url("/airframe-engine.svg");
+  background: var(--tint);
+  /* Slow because a cylinder head is slow. The easing is in the component;
+     this only smooths the steps between eased values. */
+  transition: background-color 450ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Bloom, and only past "running". A glow that is always on is decoration; a
+   glow that arrives when the engine is genuinely hot is information. */
+.hero-engine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--glow);
+  /* Tight and weak. At 26px and 0.55 this was a coloured cloud the size of
+     the aircraft, and it, not the tint, was what made the whole airframe read
+     hot. The bloom is meant to be a hint that the engine is running warm, not
+     a second light source. */
+  filter: blur(12px);
+  opacity: 0.3;
+  transition: background-color 450ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* The airframe outline, never tinted: we model an engine, not an aircraft
+   (CLAUDE.md section 8).
+
+   This layer is drawn as an IMAGE, not painted through a mask, and that is
+   the one difference that makes the composite work. The two assets are
+   near-identical outlines (53,122 against 54,435 ink pixels, only about
+   6,600 differ, measured in 03-Design/layout-study/README.md), so laying an
+   opaque neutral foreground over the tinted layer should leave only the
+   engine internals coloured.
+
+   As a mask it does not, and the render is what caught it: line art is
+   anti-aliased, so almost no pixel in a downscaled outline has alpha 1.0. A
+   masked fill therefore paints semi-transparent grey nearly everywhere, the
+   saturated tint underneath reads straight through it, and the whole
+   aircraft comes out the colour of the engine. Drawing the PNG itself
+   composites its real pixels at their real alpha, which is exactly what the
+   design file does. */
+/* Sizing and position come from .hero-layer and MUST NOT be repeated here.
+   Re-declaring background-size on this rule overrode the shared value for the
+   outline only, so the two layers were drawn at different scales and the
+   aircraft came out as two overlapping planes with mismatched wings.
+
+   Painted through a mask, like the engine layer. That was not possible while
+   these were bitmaps: downscaled line art is anti-aliased almost everywhere,
+   so a masked fill was semi-transparent along every stroke and the saturated
+   tint underneath read straight through it, turning the whole aircraft the
+   colour of the engine. The workaround then was to draw the PNG itself and
+   brighten it, which gave up control of the colour. A traced outline has
+   alpha 1.0 through the body of every stroke, so masking occludes properly
+   and the airframe's colour is ours to choose again. */
+.hero-outline {
+  -webkit-mask-image: url("/airframe-outline.svg");
+  mask-image: url("/airframe-outline.svg");
+  background: #e3e9f2;
+}
+
+/* The subject of the screen, and still behind the instruments.
+
+   This used to be 0.55, set when the airframe was a bitmap drawn over the
+   panels and the wings cut through their text at a contrast that made it
+   hard to read. Two things changed. The panels now sit on their own stacking
+   layer, so nothing crosses them whatever this is set to, and the veil
+   defocuses the field under the aircraft, so the outline no longer has to
+   fight contour lines for its edges. Both mean the aircraft can be read at a
+   glance without competing with a number, which was the study's condition
+   (03-Design/layout-study/README.md). Below the panels it is the only thing
+   in the open field, so it should be legible there. */
+.hero {
+  opacity: 0.74;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-engine,
+  .hero-engine::after {
+    transition: none;
+  }
 }
 
 .mono {
@@ -85,6 +417,23 @@ body::after {
   font-variant-numeric: tabular-nums;
 }
 
+/* Announced, never drawn. Used for the alarm live region, which needs to say
+   the level and the leading hypothesis without repeating them on screen. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Web Interface Guidelines pass: visible focus via :focus-visible only
+   (no ring on plain click), touch-friendly targets, reduced-motion
+   variants, and balanced headings. */
 button,
 select,
 a {
@@ -97,7 +446,7 @@ select:focus-visible,
 a:focus-visible {
   outline: 2px solid var(--blue);
   outline-offset: 2px;
-  border-radius: 6px;
+  border-radius: 4px;
 }
 
 button:focus:not(:focus-visible),
@@ -120,115 +469,116 @@ select:focus:not(:focus-visible) {
   .welcome-backdrop {
     animation: none;
   }
-  .app > *,
-  .grid > *,
-  .col-stack > * {
-    animation: none !important;
-  }
   .status-pill,
   .seg-btn,
   .kv-value,
-  .btn,
-  .cyl-cell,
   .welcome-primary,
   .welcome-secondary {
     transition: none;
   }
 }
 
-/* --- layout shell -------------------------------------------------------- */
-
 .app {
   position: relative;
   z-index: 1;
-  max-width: 1440px;
+  max-width: 1600px;
   margin: 0 auto;
   padding: 18px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  min-height: 100dvh;
+  gap: 14px;
+  min-height: 100vh;
 }
 
-/* Staggered entry: panels cascade in, never all at once. */
-@keyframes rise-in {
-  from {
-    opacity: 0;
-    transform: translateY(18px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.app > *,
-.grid > *,
-.col-stack > * {
-  animation: rise-in 640ms var(--ease-spring) backwards;
-}
-
-.app > *:nth-child(2) { animation-delay: 70ms; }
-.app > *:nth-child(3) { animation-delay: 140ms; }
-.grid > *:nth-child(1) { animation-delay: 190ms; }
-.grid > *:nth-child(2) { animation-delay: 260ms; }
-.grid > *:nth-child(3) { animation-delay: 330ms; }
-.grid > *:nth-child(4) { animation-delay: 400ms; }
-.col-stack > *:nth-child(2) { animation-delay: 120ms; }
-
-/* --- glass card ---------------------------------------------------------- */
-
+/* --- the floating panel -------------------------------------------------
+ * One surface, used by every instrument. Backdrop blur over the atmosphere,
+ * a lit hairline rim rather than a drawn border, and a shadow that separates
+ * it from the field. This is the whole "floating" idea: four properties, no
+ * window manager. Panels do not drag, pin, resize or reorder, because
+ * nobody does any of that during a three minute demo.
+ */
 .card {
   position: relative;
-  background: var(--glass);
-  border: 1px solid var(--glass-edge);
+  /* Above the hero. The hero's own opacity makes it a stacking context, so
+     the z-index: -1 on its layers is scoped inside it and cannot push them
+     behind a later sibling: without this the wings drew over the panels. */
+  z-index: 1;
+  background: var(--paper);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 18px 20px;
-  backdrop-filter: blur(16px) saturate(150%);
-  -webkit-backdrop-filter: blur(16px) saturate(150%);
-  box-shadow:
-    inset 0 1px 0 var(--glass-hi),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.03),
-    0 20px 44px rgba(2, 6, 13, 0.55);
+  box-shadow: var(--glass-shadow);
+  transition:
+    border-color 220ms ease,
+    background-color 220ms ease,
+    transform 220ms ease;
+}
+
+/* Where backdrop-filter is unavailable, fall back to an opaque panel rather
+   than a transparent one: the blur is decoration, legibility is not. */
+@supports not (backdrop-filter: blur(1px)) {
+  .card {
+    background: var(--paper-solid);
+  }
+}
+
+/* Escalation is depth, not decoration. A panel that matters comes forward;
+   the rest stay where they are. Driven by alarm.level, which the protocol
+   already carries, so this needs no new state. */
+.card-focus {
+  background: var(--paper-lift);
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+  box-shadow: 0 20px 52px rgba(0, 0, 0, 0.6);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .card-focus {
+    transition: none;
+    transform: none;
+  }
 }
 
 .card-title {
   margin: 0 0 14px;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.14em;
   color: var(--ink);
 }
 
 .empty-hint {
   margin: 8px 0;
   font-size: 12px;
-  color: var(--ink-mute);
+  color: var(--text-faint);
   letter-spacing: 0.04em;
 }
 
-/* --- header -------------------------------------------------------------- */
+/* --- header ------------------------------------------------------------ */
 
 .header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  padding: 16px 26px;
+  padding: 16px 24px;
 }
 
 .brand h1 {
   margin: 0;
   font-size: 26px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
+  font-weight: 600;
+  letter-spacing: 0.1em;
   color: var(--ink);
 }
 
 .brand p {
-  margin: 3px 0 0;
+  margin: 2px 0 0;
   font-size: 10px;
-  letter-spacing: 0.26em;
+  letter-spacing: 0.22em;
   color: var(--ink-soft);
 }
 
@@ -245,7 +595,7 @@ select:focus:not(:focus-visible) {
 
 .meta-dot {
   margin: 0 10px;
-  color: var(--ink-mute);
+  color: var(--text-faint);
 }
 
 .header-right {
@@ -258,22 +608,19 @@ select:focus:not(:focus-visible) {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--ink-mute);
+  background: var(--border);
 }
 
 .conn-dot.conn-live {
   background: var(--green);
-  box-shadow: 0 0 10px rgba(65, 207, 120, 0.55);
 }
 
 .conn-dot.conn-connecting {
   background: var(--orange);
-  box-shadow: 0 0 10px rgba(242, 163, 85, 0.5);
 }
 
 .conn-dot.conn-closed {
   background: var(--red);
-  box-shadow: 0 0 10px rgba(255, 93, 116, 0.5);
 }
 
 .replay-badge {
@@ -281,8 +628,21 @@ select:focus:not(:focus-visible) {
   font-weight: 600;
   letter-spacing: 0.14em;
   color: var(--ink-soft);
-  border: 1px solid var(--glass-edge);
-  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 12px;
+  cursor: help;
+}
+
+/* Amber, because provisional residuals are a caution about the reading and
+   not a fault in the engine. Shown only while the baseline is unfrozen. */
+.calib-badge {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--orange);
+  background: var(--orange-wash);
+  border: 1px solid var(--orange);
   border-radius: 999px;
   padding: 5px 12px;
   cursor: help;
@@ -290,34 +650,48 @@ select:focus:not(:focus-visible) {
 
 .status-pill {
   display: inline-block;
-  min-width: 170px;
+  min-width: 128px;
   text-align: center;
-  padding: 13px 28px;
+  padding: 9px 20px;
   border-radius: 999px;
-  color: #071018;
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.35),
-    0 10px 26px rgba(2, 6, 13, 0.5);
+  border: 1px solid transparent;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+}
+
+/* Nominal is tinted and quiet. It is the state the screen sits in for most
+   of a flight, so it must not be the brightest thing on it. */
+.status-nominal {
+  background: var(--green-wash);
+  border-color: var(--green);
+  color: var(--green);
+}
+
+/* Caution and warning go solid: the jump from tint to fill IS the alarm. */
+.status-caution {
+  background: var(--orange);
+  color: var(--ground);
+}
+
+.status-warning {
+  background: var(--red);
+  color: var(--ground);
 }
 
 .status-standby {
-  background: var(--glass-strong);
-  border: 1px solid var(--glass-edge);
+  background: var(--fill);
   color: var(--ink-soft);
-  box-shadow: var(--neu-inset);
 }
 
-/* --- controls ------------------------------------------------------------ */
+/* --- controls ---------------------------------------------------------- */
 
 .controls {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 10px 18px;
-  padding: 14px 22px;
+  padding: 12px 20px;
 }
 
 .ctl-group {
@@ -343,22 +717,16 @@ select:focus:not(:focus-visible) {
 .ctl-input {
   font-size: 12px;
   color: var(--ink);
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--glass-edge);
-  border-radius: 10px;
-  padding: 7px 9px;
-  box-shadow: var(--neu-inset);
+  background: var(--fill);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
 }
 
 .ctl-input:focus {
   outline: 1px solid var(--blue);
   outline-offset: 0;
   border-color: var(--blue);
-}
-
-.ctl-input option {
-  background: #10161f;
-  color: var(--ink);
 }
 
 .ctl-narrow {
@@ -380,6 +748,20 @@ select:focus:not(:focus-visible) {
   min-width: 34px;
 }
 
+/* Buttons acknowledge the click, then acknowledge the result.
+ *
+ * These post to the twin and most of them change something that is slow or
+ * subtle on screen: restarting a mission that is already running the same
+ * scenario moves the clock and little else. With no state on the control
+ * itself, a working button and a dead one look identical, and "start does
+ * nothing" is what that actually looked like from the outside.
+ *
+ * So: pressed while the mouse is down, dimmed and non-interactive while the
+ * POST is in flight, then a short mark saying whether the twin took it.
+ * Colour is only used for the failure, because a failure is the only one of
+ * the three that the operator has to do something about.
+ *
+ * Transform and colour only, so none of this touches layout. */
 .btn {
   font-family: var(--sans);
   font-size: 11px;
@@ -387,45 +769,82 @@ select:focus:not(:focus-visible) {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--ink);
-  background: var(--glass-strong);
-  border: 1px solid var(--glass-edge);
-  border-radius: 999px;
-  padding: 8px 16px;
+  background: var(--fill);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 14px;
   cursor: pointer;
-  box-shadow: var(--neu-raised);
   transition:
-    transform 220ms var(--ease-spring),
-    border-color 220ms var(--ease-spring),
-    background 220ms var(--ease-spring),
-    box-shadow 220ms var(--ease-spring);
+    border-color 120ms ease,
+    background-color 120ms ease,
+    color 120ms ease,
+    transform 90ms cubic-bezier(0.2, 0, 0, 1),
+    opacity 120ms ease;
 }
 
 .btn:hover {
-  border-color: var(--glass-hi);
-  background: rgba(255, 255, 255, 0.1);
-  transform: translateY(-1px);
+  border-color: var(--ink-soft);
+  background: var(--fill-lift);
 }
 
+/* The press itself. 1px is enough to feel like a key travelling; more and it
+   reads as the strip wobbling. */
 .btn:active {
-  transform: scale(0.97);
-  box-shadow: var(--neu-inset);
+  transform: translateY(1px);
+}
+
+/* Keyboard focus gets a real ring. :focus-visible rather than :focus so a
+   mouse click does not leave one behind. */
+.btn:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+/* In flight. Pointer events off rather than [disabled], so the button keeps
+   its colours and its place in the tab order instead of going grey and
+   dropping out from under the keyboard mid-action. */
+.btn[data-act="busy"] {
+  opacity: 0.55;
+  cursor: progress;
+  pointer-events: none;
+}
+
+/* Took it. A brief lift, no colour: success is the expected outcome and does
+   not deserve a hue of its own. */
+.btn[data-act="ok"] {
+  border-color: var(--ink-soft);
+  background: var(--fill-lift);
+}
+
+/* Refused it, or the POST never landed. This is the one the operator has to
+   read, so it is the one that gets colour. */
+.btn[data-act="err"] {
+  color: var(--red);
+  border-color: var(--red);
+  background: var(--red-wash);
 }
 
 .btn-primary {
   background: var(--blue);
-  border-color: transparent;
-  color: #06121d;
+  border-color: var(--blue);
+  color: var(--ground);
 }
 
 .btn-primary:hover {
-  background: #6dc0ff;
-  border-color: transparent;
-  filter: none;
+  border-color: var(--blue);
+  background: var(--blue);
+  filter: brightness(1.08);
+}
+
+.btn-primary[data-act="ok"] {
+  background: var(--blue);
+  border-color: var(--blue);
+  filter: brightness(1.14);
 }
 
 .btn-inject {
   color: var(--red);
-  border-color: rgba(255, 93, 116, 0.45);
+  border-color: var(--red);
 }
 
 .btn-inject:hover {
@@ -435,38 +854,126 @@ select:focus:not(:focus-visible) {
 
 .btn-quiet {
   color: var(--ink-soft);
-  background: transparent;
-  box-shadow: none;
 }
 
-/* --- grid ---------------------------------------------------------------- */
+.btn-quiet:hover {
+  color: var(--ink);
+}
+
+/* The way into the guided flight. Outlined rather than filled: "start" is the
+   loud control in this strip and there should only be one of those, but this
+   is the one a first-time viewer wants, so it is not allowed to be quiet
+   either. */
+.btn-guided {
+  color: var(--blue);
+  border-color: var(--blue);
+}
+
+.btn-guided:hover {
+  background: rgba(0, 153, 255, 0.12);
+  border-color: var(--blue);
+}
+
+/* Selects and number fields get the same treatment, so the whole strip
+   responds rather than only the things shaped like buttons. */
+.ctl-input {
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease;
+}
+
+.ctl-input:hover {
+  border-color: var(--ink-soft);
+}
+
+.ctl-input:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn,
+  .ctl-input {
+    transition: none;
+  }
+
+  .btn:active {
+    transform: none;
+  }
+}
+
+/* --- grid -------------------------------------------------------------- */
 
 .grid {
   display: grid;
-  /* The trend chart is the analytical core, so it gets the widest track;
-     FaultAlert is second because it is the card a fault drives attention
-     to. Ratios chosen so per-cylinder chips in EngineHealth still fit at
-     1440 px without wrapping. */
-  grid-template-columns: 1fr 1.15fr 1fr 1.7fr;
-  gap: 16px;
-  align-items: stretch;
+  /* Verdict, subject, evidence. The engine holds the middle because it is
+     what the screen is about; the rails either side are sized so the
+     per-cylinder chips still fit four across on the left and the band chart
+     keeps the width it needs on the right. */
+  /* Symmetric on purpose: the two rails are the same width and the engine
+     holds the middle, so the screen reads as one object with instruments
+     either side rather than as three competing columns. */
+  /* The rails give up about a tenth of their width to the centre. Still
+     symmetric, and still wide enough for four cylinder chips across on the
+     left and the band chart's y labels on the right, which is what set the
+     320px floor in the first place. */
+  grid-template-columns: minmax(300px, 0.92fr) minmax(260px, 1.06fr) minmax(300px, 0.92fr);
+  gap: 14px;
+  /* Panels size to their content and float, rather than stretching to a
+     common baseline. Stretching gave a quiet card the same visual weight as
+     a loud one and left half-empty boxes hanging below the content, which is
+     the flat-hierarchy problem the whole redesign exists to fix. */
+  align-items: start;
 }
 
 .col-stack {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
+}
+
+/* When the twin flags something, the two panels that explain it (the ranked
+   diagnosis and the band chart showing the excursion) come forward, and the
+   ambient panels settle back. This is the whole escalation: no new colour,
+   no flashing, just which panels are nearest the viewer. */
+.grid-alarmed > .alert-card,
+.grid-alarmed .trend-card {
+  background: var(--paper-lift);
+  border-color: var(--border-strong);
+  box-shadow: 0 20px 52px rgba(0, 0, 0, 0.62);
+}
+
+.grid-alarmed > .card:not(.alert-card) {
+  opacity: 0.82;
+}
+
+.grid-alarmed .col-stack .trend-card {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .grid-alarmed > .card:not(.alert-card) {
+    opacity: 1;
+  }
 }
 
 @media (max-width: 1180px) {
   .grid {
     grid-template-columns: 1fr 1fr;
   }
+  /* Let the stack's children join the grid directly: the chart takes a
+     full row, the report pairs with the advisory. */
   .col-stack {
     display: contents;
   }
   .trend-card {
     grid-column: 1 / -1;
+  }
+  /* Narrow enough that the centre column no longer exists. The hero takes a
+     full row above the instruments rather than being squeezed into a
+     letterbox where the airframe would be unreadable. */
+  .hero {
+    display: none;
   }
 }
 
@@ -480,7 +987,7 @@ select:focus:not(:focus-visible) {
   }
 }
 
-/* --- engine health ------------------------------------------------------- */
+/* --- engine health ----------------------------------------------------- */
 
 .health-row {
   display: grid;
@@ -489,7 +996,7 @@ select:focus:not(:focus-visible) {
     "label value"
     "label sub";
   align-items: baseline;
-  padding: 9px 0;
+  padding: 8px 0;
   border-bottom: 1px solid var(--grid);
 }
 
@@ -545,57 +1052,44 @@ select:focus:not(:focus-visible) {
 }
 
 .cyl-group {
-  padding: 9px 0;
+  padding: 8px 0;
   border-bottom: 1px solid var(--grid);
 }
 
 .cyl-group-title {
   font-size: 10.5px;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
   color: var(--ink-soft);
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .cyl-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
+  gap: 6px;
 }
 
 .cyl-cell {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
-  padding: 8px 10px;
-  background: var(--glass);
-  border: 1px solid var(--glass-edge);
-  border-radius: var(--radius-inner);
-  box-shadow: var(--neu-raised);
+  gap: 1px;
+  padding: 6px 8px;
+  background: var(--fill);
+  border: 1px solid var(--grid);
+  border-radius: 6px;
   cursor: pointer;
   font-family: var(--sans);
   text-align: left;
-  transition:
-    transform 220ms var(--ease-spring),
-    border-color 220ms var(--ease-spring),
-    box-shadow 220ms var(--ease-spring);
 }
 
 .cyl-cell:hover {
-  border-color: var(--glass-hi);
-  transform: translateY(-2px);
-}
-
-.cyl-cell:active {
-  transform: scale(0.98);
-  box-shadow: var(--neu-inset);
+  border-color: var(--ink-soft);
 }
 
 .cyl-selected {
   border-color: var(--blue);
-  box-shadow:
-    var(--neu-inset),
-    0 0 0 1px rgba(79, 176, 255, 0.35);
+  outline: 1px solid var(--blue);
 }
 
 .cyl-n {
@@ -622,22 +1116,18 @@ select:focus:not(:focus-visible) {
   text-align: left;
 }
 
-/* --- fault alert --------------------------------------------------------- */
+/* --- fault alert ------------------------------------------------------- */
+
+.alert-card {
+  border-color: var(--text-faint);
+}
 
 .alert-caution {
-  border: 1px solid rgba(242, 163, 85, 0.55);
-  box-shadow:
-    inset 0 1px 0 var(--glass-hi),
-    0 20px 44px rgba(2, 6, 13, 0.55),
-    0 0 34px rgba(242, 163, 85, 0.1);
+  border: 1.5px solid var(--orange);
 }
 
 .alert-warning {
-  border: 1px solid rgba(255, 93, 116, 0.6);
-  box-shadow:
-    inset 0 1px 0 var(--glass-hi),
-    0 20px 44px rgba(2, 6, 13, 0.55),
-    0 0 34px rgba(255, 93, 116, 0.13);
+  border: 1.5px solid var(--red);
 }
 
 .title-warning {
@@ -720,17 +1210,15 @@ select:focus:not(:focus-visible) {
 }
 
 .bar-track {
-  height: 8px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.05);
-  box-shadow: var(--neu-inset);
+  height: 9px;
+  border-radius: 5px;
+  background: var(--fill);
   overflow: hidden;
 }
 
 .bar-fill {
   height: 100%;
-  border-radius: 999px;
-  transition: width 420ms var(--ease-spring);
+  border-radius: 5px;
 }
 
 .bar-top {
@@ -742,7 +1230,7 @@ select:focus:not(:focus-visible) {
 }
 
 .bar-rest {
-  background: var(--ink-soft);
+  background: var(--ink);
 }
 
 .evidence {
@@ -764,36 +1252,34 @@ select:focus:not(:focus-visible) {
   padding: 1.5px 0;
 }
 
-/* --- maintenance advisory ------------------------------------------------ */
+/* --- maintenance advisory ---------------------------------------------- */
 
 .adv-banner {
-  border: 1px solid;
-  border-radius: 999px;
+  border: 1.5px solid;
+  border-radius: 6px;
   text-align: center;
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   padding: 10px 8px;
   margin-bottom: 14px;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
 }
 
 .adv-nominal {
   color: var(--green);
-  border-color: rgba(65, 207, 120, 0.4);
+  border-color: var(--green);
   background: var(--green-wash);
 }
 
 .adv-caution {
   color: var(--orange);
-  border-color: rgba(242, 163, 85, 0.4);
+  border-color: var(--orange);
   background: var(--orange-wash);
 }
 
 .adv-warning {
   color: var(--red);
-  border-color: rgba(255, 93, 116, 0.45);
+  border-color: var(--red);
   background: var(--red-wash);
 }
 
@@ -814,7 +1300,7 @@ select:focus:not(:focus-visible) {
   justify-content: space-between;
   align-items: baseline;
   gap: 12px;
-  padding: 8px 0;
+  padding: 7px 0;
   border-bottom: 1px solid var(--grid);
 }
 
@@ -857,7 +1343,7 @@ select:focus:not(:focus-visible) {
   opacity: 0.7;
 }
 
-/* --- health trend -------------------------------------------------------- */
+/* --- health trend ------------------------------------------------------ */
 
 .trend-card {
   display: flex;
@@ -869,7 +1355,7 @@ select:focus:not(:focus-visible) {
   justify-content: space-between;
   align-items: center;
   gap: 10px;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .trend-head .card-title {
@@ -878,17 +1364,14 @@ select:focus:not(:focus-visible) {
 
 .trend-select {
   display: flex;
-  gap: 8px;
+  gap: 6px;
 }
 
 .seg {
   display: inline-flex;
-  border: 1px solid var(--glass-edge);
-  border-radius: 999px;
-  padding: 3px;
-  gap: 2px;
-  background: rgba(255, 255, 255, 0.03);
-  box-shadow: var(--neu-inset);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
 }
 
 .seg-btn {
@@ -897,54 +1380,132 @@ select:focus:not(:focus-visible) {
   font-weight: 500;
   letter-spacing: 0.06em;
   color: var(--ink-soft);
-  background: transparent;
+  background: var(--fill);
   border: none;
-  border-radius: 999px;
-  padding: 4px 11px;
+  padding: 4px 9px;
   cursor: pointer;
-  transition:
-    background 200ms var(--ease-spring),
-    color 200ms var(--ease-spring),
-    transform 200ms var(--ease-spring);
 }
 
-.seg-btn:hover {
-  color: var(--ink);
-}
-
-.seg-btn:active {
-  transform: scale(0.96);
+.seg-btn + .seg-btn {
+  border-left: 1px solid var(--grid);
 }
 
 .seg-on {
   background: var(--blue);
-  color: #06121d;
-  font-weight: 600;
-  box-shadow: 0 3px 10px rgba(47, 143, 224, 0.35);
+  color: var(--ground);
 }
 
-.trend-body {
-  position: relative;
-}
-
-.trend-chart {
+.trend-svg {
   width: 100%;
-  height: 240px;
+  height: auto;
+  display: block;
 }
 
 .trend-empty {
-  position: absolute;
-  inset: 0;
+  height: 160px;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.grid-line {
+  stroke: var(--grid);
+  stroke-width: 0.7;
+}
+
+.axis-line {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.tick {
+  font-family: var(--mono);
+  font-size: 10px;
+  fill: var(--ink-soft);
+}
+
+.band-fill {
+  fill: url(#bandGrad);
+  stroke: var(--blue);
+  stroke-opacity: 0.5;
+  stroke-width: 0.9;
+}
+
+/* The one-sigma core. A second, denser ribbon inside the two-sigma band, so
+   the band reads as a distribution with a middle rather than as a rectangle
+   with an edge. Its own top and bottom are left unstroked: a stroked inner
+   edge reads as a threshold, and one sigma is not one. */
+.band-core {
+  fill: var(--blue);
+  fill-opacity: 0.16;
+  stroke: none;
+}
+
+/* The gap between the band and the observation. Meaningful (that IS the
+   excursion) but unbounded: a 147 K deviation fills the whole plot, and at a
+   flat alpha the chart just reads "everything is red". A gradient keeps the
+   excursion legible where it leaves the band and lets it fall away, so the
+   band edge underneath stays visible. */
+.excess-fill {
+  fill: url(#excessGrad);
+}
+
+.line-pred {
+  fill: none;
+  stroke: var(--blue);
+  stroke-width: 1.75;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.line-obs {
+  fill: none;
+  stroke: var(--red);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.obs-dot {
+  fill: var(--red);
+}
+
+/* Current reading, at the right edge where the trace ends. */
+.obs-halo {
+  fill: var(--red);
+  opacity: 0.28;
+}
+
+.now-rule {
+  stroke: var(--red);
+  stroke-opacity: 0.35;
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+
+.now-value {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  fill: var(--ink);
+}
+
+/* The plain-language half of the chart. Reads as prose, not as a caption,
+   because a non-specialist should be able to look at one sentence and know
+   whether anything is wrong. */
+.trend-plain {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-soft);
+  text-wrap: pretty;
 }
 
 .trend-legend {
   display: flex;
   gap: 16px;
   align-items: center;
-  margin-top: 8px;
+  margin-top: 6px;
   font-size: 10.5px;
   color: var(--ink-soft);
 }
@@ -975,19 +1536,36 @@ select:focus:not(:focus-visible) {
   background: var(--red);
 }
 
-/* --- welcome experience --------------------------------------------------- */
+/* --- Guided flight + welcome experience ---------------------------------- */
 
+/* A native <dialog> in modal mode. The dimming lives on ::backdrop rather
+   than on the element itself, and the element is sized to its card so the
+   browser's own centring and focus trap apply. */
 .welcome-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(6, 10, 16, 0.55);
-  backdrop-filter: blur(10px) saturate(140%);
-  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  width: auto;
+  max-width: none;
+  max-height: none;
+  border: none;
+  padding: 0;
+  background: transparent;
+  color: inherit;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 50;
-  animation: welcome-fade 240ms var(--ease-spring);
+  overflow: auto;
+  animation: welcome-fade 240ms ease-out;
+}
+
+/* A plain dim, no blur. backdrop-filter here is the only exotic compositing
+   in the top layer, and with it the dialog's own content captured as a
+   washed-out light panel in screenshots even though every computed style on
+   it was dark (an identical clone rendered outside the top layer painted
+   correctly). Whether that is only a capture artifact or something a viewer
+   would see, the blur behind a modal is decoration and not worth the doubt. */
+.welcome-backdrop::backdrop {
+  background: rgba(4, 6, 8, 0.68);
 }
 
 @keyframes welcome-fade {
@@ -995,54 +1573,45 @@ select:focus:not(:focus-visible) {
   to { opacity: 1; }
 }
 
+/* Solid, not glass. A backdrop-filter here sits in the top layer stacked
+   over the dialog's own blurred ::backdrop, and the two compose into a
+   washed-out light panel even though the computed background is dark. The
+   modal is also the one surface that should be fully opaque: it is the
+   thing being read, not something floating over the field. */
 .welcome-card {
-  background: rgba(16, 22, 31, 0.72);
-  border: 1px solid var(--glass-edge);
-  border-radius: 26px;
+  background: var(--paper-solid);
+  border: 1px solid var(--border-strong);
+  border-radius: 18px;
   max-width: 640px;
   margin: 24px;
-  padding: 46px 50px 38px;
-  backdrop-filter: blur(24px) saturate(160%);
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
-  box-shadow:
-    inset 0 1px 0 var(--glass-hi),
-    0 30px 80px rgba(1, 4, 9, 0.7);
-  animation: rise-in 560ms var(--ease-spring) 80ms backwards;
+  padding: 44px 48px 36px;
+  box-shadow: 0 28px 72px rgba(0, 0, 0, 0.65);
 }
 
 .welcome-kicker {
   font-size: 11px;
-  letter-spacing: 0.26em;
-  color: var(--blue);
-  margin: 0 0 8px;
+  letter-spacing: 0.22em;
+  color: var(--ink-soft);
+  margin: 0 0 6px;
 }
 
 .welcome-title {
-  font-size: 46px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  color: var(--ink);
+  font-size: 42px;
+  letter-spacing: 0.06em;
   margin: 0 0 14px;
 }
 
 .welcome-lede {
   font-size: 15.5px;
-  line-height: 1.6;
+  line-height: 1.55;
   color: var(--ink-soft);
-  margin: 0 0 28px;
-  max-width: 62ch;
+  margin: 0 0 26px;
 }
 
 .welcome-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 14px;
-}
-
-@media (max-width: 560px) {
-  .welcome-actions {
-    grid-template-columns: 1fr;
-  }
+  gap: 12px;
 }
 
 .welcome-primary,
@@ -1051,46 +1620,29 @@ select:focus:not(:focus-visible) {
   flex-direction: column;
   align-items: flex-start;
   gap: 8px;
-  padding: 18px 20px;
-  border-radius: 18px;
-  border: 1px solid var(--glass-edge);
-  background: var(--glass);
+  padding: 16px 18px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--fill);
   color: var(--ink);
-  font-family: var(--sans);
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.08em;
   cursor: pointer;
   text-align: left;
-  box-shadow: var(--neu-raised);
-  transition:
-    transform 260ms var(--ease-spring),
-    box-shadow 260ms var(--ease-spring),
-    border-color 260ms var(--ease-spring),
-    background 260ms var(--ease-spring);
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
 }
 
 .welcome-primary {
-  background: var(--blue);
-  color: #06121d;
-  border-color: transparent;
+  background: var(--ink);
+  color: var(--ground);
+  border-color: var(--ink);
 }
 
 .welcome-primary:hover,
 .welcome-secondary:hover {
-  transform: translateY(-2px);
-  box-shadow:
-    8px 10px 22px rgba(2, 5, 10, 0.55),
-    -3px -3px 8px rgba(255, 255, 255, 0.04);
-}
-
-.welcome-secondary:hover {
-  border-color: var(--glass-hi);
-}
-
-.welcome-primary:active,
-.welcome-secondary:active {
-  transform: scale(0.98);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
 }
 
 .welcome-sub {
@@ -1102,16 +1654,16 @@ select:focus:not(:focus-visible) {
 }
 
 .welcome-fine {
-  margin: 24px 0 0;
+  margin: 22px 0 0;
   font-size: 11.5px;
   color: var(--ink-soft);
   opacity: 0.85;
 }
 
-/* --- guided flight bar ----------------------------------------------------- */
+/* Demo bar */
 
 .demo-bar {
-  padding: 14px 22px 13px;
+  padding: 14px 20px 12px;
 }
 
 .demo-row {
@@ -1128,64 +1680,46 @@ select:focus:not(:focus-visible) {
 }
 
 .demo-play {
-  width: 40px;
-  height: 40px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
-  border: 1px solid var(--glass-edge);
-  background: var(--glass-strong);
+  border: 1px solid var(--border);
+  background: var(--fill);
   color: var(--ink);
   font-size: 13px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: var(--neu-raised);
-  transition:
-    transform 220ms var(--ease-spring),
-    background 220ms var(--ease-spring),
-    box-shadow 220ms var(--ease-spring);
+  transition: background 120ms ease;
 }
 
 .demo-play:hover {
-  background: rgba(255, 255, 255, 0.11);
-  transform: translateY(-1px);
-}
-
-.demo-play:active {
-  transform: scale(0.94);
-  box-shadow: var(--neu-inset);
+  background: var(--fill);
 }
 
 .demo-clock {
   font-size: 13px;
-  color: var(--ink);
+  color: var(--ink-soft);
   min-width: 64px;
 }
 
 .demo-timeline {
   display: flex;
   flex: 1;
-  gap: 4px;
-  height: 28px;
+  gap: 3px;
+  height: 26px;
 }
 
 .demo-seg {
   position: relative;
-  border: 1px solid var(--glass-edge);
-  background: rgba(255, 255, 255, 0.03);
-  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--fill);
+  border-radius: 6px;
   overflow: hidden;
   cursor: pointer;
   padding: 0;
-  box-shadow: var(--neu-inset);
-  transition:
-    border-color 220ms var(--ease-spring),
-    transform 220ms var(--ease-spring);
-}
-
-.demo-seg:not(:disabled):hover {
-  border-color: var(--glass-hi);
-  transform: translateY(-1px);
+  transition: border-color 120ms ease;
 }
 
 .demo-seg:disabled {
@@ -1196,16 +1730,20 @@ select:focus:not(:focus-visible) {
   position: absolute;
   inset: 0 auto 0 0;
   background: var(--blue);
-  opacity: 0.25;
+  opacity: 0.22;
 }
 
 .demo-seg-current {
   border-color: var(--blue);
 }
 
+/* A finished phase is neutral, not green. Green means "nominal, inside the
+   band" everywhere else in this app, and spending it on "this part of the
+   video has played" breaks the instrument language on the one bar the
+   viewer looks at most. */
 .demo-seg-done .demo-seg-fill {
-  background: var(--green);
-  opacity: 0.3;
+  background: rgba(255, 255, 255, 0.22);
+  opacity: 1;
 }
 
 .demo-seg-label {
@@ -1213,40 +1751,33 @@ select:focus:not(:focus-visible) {
   font-size: 11px;
   font-weight: 600;
   color: var(--ink-soft);
-  font-family: var(--mono);
+  font-family: "Roboto Mono", ui-monospace, monospace;
 }
 
 .demo-exit {
   flex-shrink: 0;
-  border: 1px solid var(--glass-edge);
-  background: var(--glass-strong);
-  border-radius: 999px;
-  padding: 9px 16px;
-  font-family: var(--sans);
+  border: 1px solid var(--border);
+  background: var(--fill);
+  border-radius: 8px;
+  padding: 8px 14px;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.1em;
   color: var(--ink-soft);
   cursor: pointer;
-  box-shadow: var(--neu-raised);
-  transition:
-    color 220ms var(--ease-spring),
-    border-color 220ms var(--ease-spring),
-    transform 220ms var(--ease-spring);
 }
 
 .demo-exit:hover {
   color: var(--red);
-  border-color: rgba(255, 93, 116, 0.5);
-  transform: translateY(-1px);
+  border-color: var(--red);
 }
 
 .demo-caption {
   display: flex;
   align-items: baseline;
   gap: 14px;
-  margin-top: 11px;
-  padding-top: 11px;
+  margin-top: 10px;
+  padding-top: 10px;
   border-top: 1px solid var(--grid);
 }
 
@@ -1265,6 +1796,21 @@ select:focus:not(:focus-visible) {
   color: var(--ink-soft);
 }
 
+/* Phase ticks on the trend chart */
+
+.phase-tick {
+  stroke: var(--ink-soft);
+  stroke-width: 0.7;
+  stroke-dasharray: 3 3;
+  opacity: 0.55;
+}
+
+.phase-tick-label {
+  font-size: 8.5px;
+  fill: var(--ink-soft);
+  font-family: "Public Sans", system-ui, sans-serif;
+}
+
 /* Attention pulse: the card that matters right now */
 
 .alert-warning {
@@ -1272,14 +1818,8 @@ select:focus:not(:focus-visible) {
 }
 
 @keyframes alert-pulse {
-  0%, 100% { box-shadow:
-    inset 0 1px 0 var(--glass-hi),
-    0 20px 44px rgba(2, 6, 13, 0.55),
-    0 0 0 0 rgba(255, 93, 116, 0); }
-  50% { box-shadow:
-    inset 0 1px 0 var(--glass-hi),
-    0 20px 44px rgba(2, 6, 13, 0.55),
-    0 0 0 7px rgba(255, 93, 116, 0.14); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(251, 44, 85, 0.0); }
+  50% { box-shadow: 0 0 0 6px rgba(251, 44, 85, 0.12); }
 }
 
 /* Small polish */
@@ -1287,8 +1827,153 @@ select:focus:not(:focus-visible) {
 .status-pill,
 .seg-btn,
 .kv-value {
-  transition:
-    background 200ms var(--ease-spring),
-    color 200ms var(--ease-spring),
-    border-color 200ms var(--ease-spring);
+  transition: background 180ms ease, color 180ms ease, border-color 180ms ease;
+}
+
+/* --- mixture hill --------------------------------------------------------
+ * The curve is the model's own output, so it gets the blue that means
+ * "predicted" everywhere else in this project. The equal-EGT read is drawn in
+ * ink rather than an accent: it is an annotation about the curve, not a
+ * fault, and colouring it red would say the engine is wrong when the point is
+ * that the MEASUREMENT is ambiguous.
+ */
+
+.mix-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+
+.mix-grid {
+  stroke: var(--grid);
+  stroke-width: 1;
+}
+
+.mix-ytick,
+.mix-axis-unit {
+  font-family: var(--mono);
+  font-size: 8.5px;
+  fill: var(--text-faint);
+  text-anchor: end;
+}
+
+/* The one temperature the argument is about, so it reads as a value rather
+   than another gridline label. */
+.mix-ytick-read {
+  fill: var(--ink);
+  font-weight: 500;
+}
+
+.mix-curve {
+  fill: none;
+  stroke: var(--blue);
+  stroke-width: 2.2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+/* Area under the hill, kept faint. It exists to give the curve a base, not to
+   carry information. The kink at stoichiometric is real (the min(phi,1)
+   term), so it is left sharp rather than smoothed into a prettier arc. */
+.mix-area {
+  fill: url(#mixGrad);
+  stroke: none;
+}
+
+.mix-peak {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+}
+
+.mix-peak-dot {
+  fill: var(--blue);
+}
+
+.mix-peak-label {
+  font-family: var(--sans);
+  font-size: 8.5px;
+  letter-spacing: 0.04em;
+  fill: var(--text-faint);
+}
+
+/* The read across the curve. Solid, because it is a measurement being taken,
+   and full width so it is legible as "this temperature" rather than as a
+   segment joining two dots. */
+.mix-tie {
+  stroke: var(--ink-soft);
+  stroke-width: 1.1;
+}
+
+.mix-drop {
+  stroke: var(--ink-soft);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+  opacity: 0.6;
+}
+
+.mix-amb {
+  fill: var(--ink);
+  stroke: var(--paper-solid);
+  stroke-width: 1.4;
+}
+
+.mix-amb-label {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  fill: var(--ink);
+  text-anchor: middle;
+}
+
+.mix-note {
+  font-family: var(--sans);
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  fill: var(--ink);
+  text-anchor: middle;
+}
+
+.mix-xend {
+  font-family: var(--sans);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  fill: var(--text-faint);
+}
+
+.mix-cyl {
+  fill: var(--green);
+  stroke: var(--paper-solid);
+  stroke-width: 1.4;
+}
+
+.mix-cyl-flag {
+  fill: var(--red);
+  stroke: var(--paper-solid);
+}
+
+.mix-cyl-label {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  fill: var(--ink);
+  text-anchor: middle;
+}
+
+.mix-foot {
+  margin: 10px 0 0;
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+/* Plain-language note inside a panel. Same job as .trend-plain: the numbers
+   above carry the precision, this carries the meaning. */
+.panel-plain {
+  margin: 12px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--grid);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-faint);
+  text-wrap: pretty;
 }

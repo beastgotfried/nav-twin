@@ -2,7 +2,7 @@ import type { TwinState } from "../lib/protocol";
 import { fmtDuration } from "../lib/format";
 
 /**
- * Maintenance advisory. The protocol (app/README.md) carries no
+ * Maintenance advisory. The protocol (10-Twin/README.md) carries no
  * maintenance fields of its own, so every row here is derived from the twin
  * state on screen: the banner follows alarm.level, the advisory sentence
  * quotes the leading diagnosis, and the figures come from the alarm and the
